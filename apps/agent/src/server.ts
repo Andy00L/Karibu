@@ -8,6 +8,7 @@ import type { SpendTracker } from "./spend-tracker.js";
 import { gatePayment, type PaymentContext } from "./payment.js";
 import { anchorSha256, notaryRequestSchema, type NotaryRuntime } from "./notary.js";
 import { quoteFx, fxQuoteRequestSchema, type FxRuntime } from "./fx.js";
+import { type SelfVerifier, verifyParamsSchema } from "./self.js";
 import { logInfo } from "./logger.js";
 
 export type ServerDependencies = {
@@ -18,6 +19,7 @@ export type ServerDependencies = {
   payment: PaymentContext | null;
   notaryRuntime: NotaryRuntime | null;
   fxRuntime: FxRuntime | null;
+  selfVerifier: SelfVerifier;
   startedAtMs: number;
   now: () => number;
 };
@@ -202,6 +204,44 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     return quoteResult.quote;
   });
 
+  // SVC-1 verify, gated by x402. Returns whether a verified human backs a wallet
+  // via Self. sourceRef: KARIBU_BUILD_PLAN.md section 2.1 (SVC-1).
+  app.get("/api/verify/:wallet", async (request, reply) => {
+    if (deps.payment === null) {
+      return reply.code(503).send({ error: "verify unavailable: x402 not configured" });
+    }
+    const parsedParams = verifyParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      return reply.code(400).send({ error: parsedParams.error.message });
+    }
+    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
+    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
+
+    const gate = await gatePayment(deps.payment, "verify", resourceUrl, "GET", paymentData);
+    if (!gate.paid) {
+      reply.code(gate.status);
+      for (const [headerKey, headerValue] of Object.entries(gate.headers)) {
+        reply.header(headerKey, headerValue);
+      }
+      return gate.body;
+    }
+
+    const result = await deps.selfVerifier.isHumanBacked(parsedParams.data.wallet);
+    for (const [headerKey, headerValue] of Object.entries(gate.receiptHeaders)) {
+      reply.header(headerKey, headerValue);
+    }
+    deps.spendTracker.recordRevenue(SERVICE_PRICE_USD.verify);
+    deps.metrics.recordServicePaid("verify", null, deps.now());
+    if (result.humanBacked) {
+      deps.events.emit({
+        type: "human_verified",
+        walletShort: `${result.wallet.slice(0, 6)}...${result.wallet.slice(-4)}`,
+      });
+    }
+    return result;
+  });
+
   // Server-Sent Events stream. Fastify hands the raw socket to us via hijack();
   // we own writing and cleanup from here. sourceRef: KARIBU_BUILD_PLAN.md 2.5.
   app.get("/api/stream", async (request, reply) => {
@@ -222,6 +262,6 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     });
   });
 
-  logInfo("buildServer", "routes registered", { routeCount: 9 });
+  logInfo("buildServer", "routes registered", { routeCount: 10 });
   return app;
 }

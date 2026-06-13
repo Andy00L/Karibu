@@ -8,6 +8,8 @@ import { buildPaymentContext, type PaymentContext } from "./payment.js";
 import type { NotaryRuntime } from "./notary.js";
 import { createFxRuntime, type FxRuntime } from "./fx.js";
 import { startMockStream } from "./mock-stream.js";
+import { createSelfVerifier } from "./self.js";
+import { startTelegramBot } from "./telegram.js";
 import { logError, logInfo } from "./logger.js";
 
 async function main(): Promise<void> {
@@ -25,6 +27,7 @@ async function main(): Promise<void> {
   const events = new EventBus();
   // The grant is 0 in MODE T (testnet-first). sourceRef: KARIBU_BUILD_PLAN.md section 7.
   const spendTracker = new SpendTracker(0);
+  const selfVerifier = createSelfVerifier(config.network);
 
   let payment: PaymentContext | null = null;
   let notaryRuntime: NotaryRuntime | null = null;
@@ -71,6 +74,7 @@ async function main(): Promise<void> {
     payment,
     notaryRuntime,
     fxRuntime,
+    selfVerifier,
     startedAtMs,
     now,
   });
@@ -85,6 +89,22 @@ async function main(): Promise<void> {
     });
     if (config.mockStream) {
       startMockStream({ events, metrics, spendTracker, now });
+    }
+    const telegramToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+    if (telegramToken.length > 0 && process.env.TELEGRAM_BOT_ENABLED === "1") {
+      const botResult = await startTelegramBot(telegramToken, {
+        fxRuntime,
+        notaryRuntime,
+        selfVerifier,
+        events,
+      });
+      if (botResult.ok) {
+        logInfo("main", "telegram bot live", { username: botResult.handle.username });
+      } else {
+        logInfo("main", "telegram bot not started", { reason: botResult.reason });
+      }
+    } else if (telegramToken.length > 0) {
+      logInfo("main", "telegram bot available but disabled; set TELEGRAM_BOT_ENABLED=1 to go live");
     }
   } catch (startError) {
     const message = startError instanceof Error ? startError.message : String(startError);
