@@ -83,6 +83,7 @@ export type AgentConfig = {
   agentId: string;
   demoWallets: ReadonlySet<string>;
   mockStream: boolean;
+  publicBaseUrl: string;
 };
 
 const envSchema = z.object({
@@ -92,6 +93,7 @@ const envSchema = z.object({
   KARIBU_AGENT_ID: z.string().default(""),
   KARIBU_DEMO_WALLETS: z.string().default(""),
   MOCK_STREAM: z.string().default(""),
+  PUBLIC_BASE_URL: z.string().default(""),
 });
 
 export type ConfigResult = { ok: true; config: AgentConfig } | { ok: false; error: string };
@@ -119,6 +121,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ConfigResult {
       agentId: data.KARIBU_AGENT_ID,
       demoWallets,
       mockStream: data.MOCK_STREAM === "1",
+      publicBaseUrl: data.PUBLIC_BASE_URL,
     },
   };
 }

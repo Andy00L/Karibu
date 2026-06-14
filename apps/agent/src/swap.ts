@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import type { Mento } from "@mento-protocol/mento-sdk";
-import { prepareTransaction, sendTransaction, waitForReceipt, type ThirdwebClient } from "thirdweb";
+import { getContract, prepareContractCall, prepareTransaction, sendTransaction, waitForReceipt, type ThirdwebClient } from "thirdweb";
 import type { Chain } from "thirdweb/chains";
 import type { Account } from "thirdweb/wallets";
 import { z } from "zod";
@@ -225,6 +225,40 @@ export async function executeSwap(
     const message = swapError instanceof Error ? swapError.message : String(swapError);
     const firstLine = message.split("\n")[0] ?? message;
     logError("executeSwap", "swap failed", { error: firstLine });
+    return { ok: false, reason: firstLine };
+  }
+}
+
+export type RefundResult = { ok: true; txHash: string } | { ok: false; reason: string };
+
+// Refunds USDC from the treasury to the payer when a paid swap could not be
+// executed, so the caller is made whole. Errors as values. sourceRef: audit
+// 2026-06-14.
+export async function refundUsdc(runtime: SwapRuntime, payer: string, amountUnits: bigint): Promise<RefundResult> {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(payer)) {
+    return { ok: false, reason: "refund payer is not a valid address" };
+  }
+  const usdcAddress = runtime.tokenAddresses["USDC"];
+  if (usdcAddress === undefined) {
+    return { ok: false, reason: "USDC address not configured for the refund" };
+  }
+  if (amountUnits <= 0n) {
+    return { ok: false, reason: "refund amount must be positive" };
+  }
+  try {
+    const contract = getContract({ client: runtime.client, chain: runtime.chain, address: usdcAddress });
+    const transaction = prepareContractCall({
+      contract,
+      method: "function transfer(address to, uint256 amount) returns (bool)",
+      params: [payer, amountUnits],
+    });
+    const sent = await sendTransaction({ transaction, account: runtime.account });
+    logInfo("refundUsdc", "refund sent", { payer, txHash: sent.transactionHash });
+    return { ok: true, txHash: sent.transactionHash };
+  } catch (refundError) {
+    const message = refundError instanceof Error ? refundError.message : String(refundError);
+    const firstLine = message.split("\n")[0] ?? message;
+    logError("refundUsdc", "refund failed", { error: firstLine });
     return { ok: false, reason: firstLine };
   }
 }

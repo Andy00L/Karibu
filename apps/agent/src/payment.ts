@@ -3,6 +3,7 @@ import type { Chain } from "thirdweb/chains";
 import { facilitator, settlePayment, type ThirdwebX402Facilitator } from "thirdweb/x402";
 import type { ServiceName, KaribuNetwork } from "@karibu/state-contract";
 import { SERVICE_PRICE_USD } from "@karibu/state-contract";
+import { z } from "zod";
 import { NETWORK_CONFIG } from "./config.js";
 import { logError, logInfo } from "./logger.js";
 
@@ -63,8 +64,34 @@ export function buildPaymentContext(
 // The outcome of gating a request. On paid, the caller serves content and sets
 // receiptHeaders. Otherwise the caller forwards the status, headers, and body.
 export type GateOutcome =
-  | { paid: true; receiptHeaders: Record<string, string> }
+  | { paid: true; receiptHeaders: Record<string, string>; payer: string | null }
   | { paid: false; status: number; headers: Record<string, string>; body: unknown };
+
+// The x402 settlement response (base64 JSON in the receipt headers) carries the
+// payer address, used to refund a paid swap that could not execute. sourceRef:
+// audit 2026-06-14.
+const settlementResponseSchema = z.object({ payer: z.string() });
+
+function extractSettlementPayer(headers: Record<string, string>): string | null {
+  // The settlement payer lives in a base64-JSON receipt header whose exact name
+  // varies, so try every header value and accept the one that decodes to a
+  // settlement with a valid payer address. sourceRef: audit 2026-06-14.
+  for (const headerValue of Object.values(headers)) {
+    if (typeof headerValue !== "string" || headerValue.length === 0) {
+      continue;
+    }
+    try {
+      const decoded: unknown = JSON.parse(Buffer.from(headerValue, "base64").toString("utf8"));
+      const parsed = settlementResponseSchema.safeParse(decoded);
+      if (parsed.success && /^0x[0-9a-fA-F]{40}$/.test(parsed.data.payer)) {
+        return parsed.data.payer;
+      }
+    } catch {
+      // not a base64 JSON settlement header; skip it
+    }
+  }
+  return null;
+}
 
 // Narrows a configured address to the 0x-prefixed form the x402 asset type wants,
 // without a type assertion.
@@ -125,7 +152,7 @@ export async function gatePayment(
       },
     });
     if (result.status === 200) {
-      return { paid: true, receiptHeaders: result.responseHeaders };
+      return { paid: true, receiptHeaders: result.responseHeaders, payer: extractSettlementPayer(result.responseHeaders) };
     }
     logInfo("gatePayment", "payment required", { service, status: result.status });
     return {

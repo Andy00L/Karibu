@@ -14,12 +14,12 @@ import {
   type NotaryRuntime,
 } from "./notary.js";
 import { quoteFx, fxQuoteRequestSchema, type FxRuntime } from "./fx.js";
-import { executeSwap, fxSwapRequestSchema, toTokenUnits, type SwapRuntime } from "./swap.js";
+import { executeSwap, fxSwapRequestSchema, refundUsdc, toTokenUnits, type SwapRuntime } from "./swap.js";
 import { type SelfVerifier, verifyParamsSchema } from "./self.js";
 import type { ReplayGuard } from "./replay-guard.js";
 import type { PayoutPolicy } from "./payout-policy.js";
 import type { RateLimiter } from "./rate-limiter.js";
-import { logInfo } from "./logger.js";
+import { logError, logInfo } from "./logger.js";
 
 export type ServerDependencies = {
   config: AgentConfig;
@@ -47,6 +47,22 @@ function currentSnapshot(deps: ServerDependencies): KaribuSnapshot {
 
 function readPaymentHeader(headerValue: string | string[] | undefined): string | null {
   return typeof headerValue === "string" ? headerValue : null;
+}
+
+// Builds the x402 resource URL. Prefers a configured public base URL so the
+// payment is not bound to a caller-supplied Host header; falls back to the Host
+// header when none is configured. sourceRef: audit 2026-06-14.
+function resolveResourceUrl(
+  publicBaseUrl: string,
+  protocol: string,
+  hostHeader: string | string[] | undefined,
+  url: string,
+): string {
+  if (publicBaseUrl.length > 0) {
+    return `${publicBaseUrl.replace(/\/$/, "")}${url}`;
+  }
+  const host = typeof hostHeader === "string" ? hostHeader : "localhost";
+  return `${protocol}://${host}${url}`;
 }
 
 export function buildServer(deps: ServerDependencies): FastifyInstance {
@@ -167,8 +183,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (deps.payment === null || deps.notaryRuntime === null) {
       return reply.code(503).send({ error: "notary unavailable: x402 or chain runtime not configured" });
     }
-    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const resourceUrl = resolveResourceUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host, request.url);
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
     const gate = await gatePayment(deps.payment, "notary", resourceUrl, "POST", paymentData);
@@ -222,8 +237,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (deps.payment === null || deps.fxRuntime === null) {
       return reply.code(503).send({ error: "fx-quote unavailable: x402 or Mento runtime not configured" });
     }
-    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const resourceUrl = resolveResourceUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host, request.url);
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
     const gate = await gatePayment(deps.payment, "fx-quote", resourceUrl, "POST", paymentData);
@@ -282,8 +296,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     const amountNumber = Number(swapRequest.amount);
     const totalPriceUsd = amountNumber + SERVICE_PRICE_USD["fx-swap"];
 
-    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const resourceUrl = resolveResourceUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host, request.url);
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
     const gate = await gatePayment(deps.payment, "fx-swap", resourceUrl, "POST", paymentData, totalPriceUsd);
@@ -321,9 +334,23 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     // it whole. sourceRef: docs/DECISIONS.md 2026-06-14 (SVC-3 prepayment fix).
     const swapResult = await executeSwap(deps.swapRuntime, "USDC", swapRequest.to, swapRequest.amount, swapRequest.recipient);
     if (!swapResult.ok) {
-      // executeSwap already logged the detail; return a generic message so raw RPC
-      // or SDK internals are not leaked to the caller. sourceRef: audit 2026-06-14.
-      return reply.code(502).send({ error: "swap execution failed after settlement" });
+      // The payment settled but the swap could not execute (insufficient liquidity,
+      // a closed market). Refund the prepayment to the payer so the caller is made
+      // whole; the raw error is logged server-side only. sourceRef: audit 2026-06-14.
+      const feeUnits = BigInt(Math.round(SERVICE_PRICE_USD["fx-swap"] * 10 ** TOKEN_DECIMALS.USDC));
+      const refundUnits = amountUnits + feeUnits;
+      if (gate.payer !== null) {
+        const refund = await refundUsdc(deps.swapRuntime, gate.payer, refundUnits);
+        if (refund.ok) {
+          return reply
+            .code(502)
+            .send({ error: "swap execution failed after settlement; prepayment refunded", refundTxHash: refund.txHash });
+        }
+        logError("fx-swap", "swap failed and the refund could not be sent", { payer: gate.payer });
+      } else {
+        logError("fx-swap", "swap failed and the payer could not be determined for a refund", {});
+      }
+      return reply.code(502).send({ error: "swap execution failed after settlement; refund pending manual reconciliation" });
     }
 
     for (const [headerKey, headerValue] of Object.entries(gate.receiptHeaders)) {
@@ -353,8 +380,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (!parsedParams.success) {
       return reply.code(400).send({ error: parsedParams.error.message });
     }
-    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const resourceUrl = resolveResourceUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host, request.url);
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
     const gate = await gatePayment(deps.payment, "verify", resourceUrl, "GET", paymentData);
