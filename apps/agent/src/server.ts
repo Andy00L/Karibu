@@ -14,7 +14,15 @@ import {
   type NotaryRuntime,
 } from "./notary.js";
 import { quoteFx, fxQuoteRequestSchema, type FxRuntime } from "./fx.js";
-import { executeSwap, fxSwapRequestSchema, refundUsdc, toTokenUnits, type SwapRuntime } from "./swap.js";
+import {
+  executeSwap,
+  fxSwapRequestSchema,
+  readTreasuryUsdc,
+  refundUsdc,
+  toTokenUnits,
+  waitForUsdcCredit,
+  type SwapRuntime,
+} from "./swap.js";
 import { type SelfVerifier, verifyParamsSchema } from "./self.js";
 import type { ReplayGuard } from "./replay-guard.js";
 import type { PayoutPolicy } from "./payout-policy.js";
@@ -216,18 +224,17 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     const nowMs = deps.now();
     deps.spendTracker.recordRevenue(SERVICE_PRICE_USD.notary);
     deps.metrics.recordServicePaid("notary", null, nowMs);
+    const receiptUrl = `/verify-receipt/${anchorResult.sha256}`;
+    if (anchorResult.alreadyAnchored) {
+      return { sha256: anchorResult.sha256, alreadyAnchored: true, explorerUrl: anchorResult.explorerUrl, receiptUrl };
+    }
     deps.events.emit({
       type: "notary_anchored",
       sha256: anchorResult.sha256,
       txHash: anchorResult.txHash,
       selfInitiated: false,
     });
-    return {
-      sha256: anchorResult.sha256,
-      txHash: anchorResult.txHash,
-      explorerUrl: anchorResult.explorerUrl,
-      receiptUrl: `/verify-receipt/${anchorResult.sha256}`,
-    };
+    return { sha256: anchorResult.sha256, txHash: anchorResult.txHash, explorerUrl: anchorResult.explorerUrl, receiptUrl };
   });
 
   // SVC-2 fx-quote, gated by x402. Returns a Mento quote, or a distinct error
@@ -299,6 +306,9 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     const resourceUrl = resolveResourceUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host, request.url);
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
+    // Snapshot the treasury USDC before gating, to confirm the prepayment credits
+    // before the irreversible swap. sourceRef: audit 2026-06-14.
+    const usdcBefore = await readTreasuryUsdc(deps.swapRuntime);
     const gate = await gatePayment(deps.payment, "fx-swap", resourceUrl, "POST", paymentData, totalPriceUsd);
     if (!gate.paid) {
       reply.code(gate.status);
@@ -329,18 +339,37 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       return reply.code(403).send({ error: payoutDecision.reason });
     }
 
-    // The swap input is the prepaid USDC; the output token and amount are the
-    // caller's. The agent fronts the swap from treasury and the prepayment makes
-    // it whole. sourceRef: docs/DECISIONS.md 2026-06-14 (SVC-3 prepayment fix).
+    const feeUnits = BigInt(Math.round(SERVICE_PRICE_USD["fx-swap"] * 10 ** TOKEN_DECIMALS.USDC));
+    const totalUnits = amountUnits + feeUnits;
+    // Confirm the prepayment actually credited the treasury before the irreversible
+    // swap, closing the submitted-not-confirmed settlement race. Polls forno (fast,
+    // no hosted-facilitator wait, so no 524). If it does not credit in time, refund
+    // and do not swap. sourceRef: audit 2026-06-14 (waitUntil submitted race).
+    // Self-pay (the agent paying its own treasury) is a net-zero transfer with no
+    // external credit to confirm, so skip the wait in that case. sourceRef: audit.
+    const isSelfPay = gate.payer !== null && gate.payer.toLowerCase() === deps.config.agentAddress.toLowerCase();
+    const credited = isSelfPay ? true : await waitForUsdcCredit(deps.swapRuntime, usdcBefore + totalUnits, 15, 2000);
+    if (!credited) {
+      if (gate.payer !== null) {
+        const refund = await refundUsdc(deps.swapRuntime, gate.payer, totalUnits);
+        logError("fx-swap", "prepayment did not credit in time; refund attempted", { refunded: refund.ok });
+        return reply
+          .code(502)
+          .send({ error: "payment did not confirm in time; prepayment refunded", refundTxHash: refund.ok ? refund.txHash : null });
+      }
+      logError("fx-swap", "prepayment did not credit in time and the payer is unknown", {});
+      return reply.code(502).send({ error: "payment did not confirm in time; refund pending manual reconciliation" });
+    }
+
+    // The treasury was confirmed credited above. The swap input is the prepaid
+    // USDC; the output token and amount are the caller's. sourceRef: audit 2026-06-14.
     const swapResult = await executeSwap(deps.swapRuntime, "USDC", swapRequest.to, swapRequest.amount, swapRequest.recipient);
     if (!swapResult.ok) {
-      // The payment settled but the swap could not execute (insufficient liquidity,
-      // a closed market). Refund the prepayment to the payer so the caller is made
-      // whole; the raw error is logged server-side only. sourceRef: audit 2026-06-14.
-      const feeUnits = BigInt(Math.round(SERVICE_PRICE_USD["fx-swap"] * 10 ** TOKEN_DECIMALS.USDC));
-      const refundUnits = amountUnits + feeUnits;
+      // The swap could not execute (insufficient liquidity, a closed market). Refund
+      // the prepayment to the payer; the raw error is logged server-side only.
+      // sourceRef: audit 2026-06-14.
       if (gate.payer !== null) {
-        const refund = await refundUsdc(deps.swapRuntime, gate.payer, refundUnits);
+        const refund = await refundUsdc(deps.swapRuntime, gate.payer, totalUnits);
         if (refund.ok) {
           return reply
             .code(502)

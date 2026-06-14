@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import type { Mento } from "@mento-protocol/mento-sdk";
-import { getContract, prepareContractCall, prepareTransaction, sendTransaction, waitForReceipt, type ThirdwebClient } from "thirdweb";
+import { getContract, prepareContractCall, prepareTransaction, readContract, sendTransaction, waitForReceipt, type ThirdwebClient } from "thirdweb";
 import type { Chain } from "thirdweb/chains";
 import type { Account } from "thirdweb/wallets";
 import { z } from "zod";
@@ -261,4 +261,33 @@ export async function refundUsdc(runtime: SwapRuntime, payer: string, amountUnit
     logError("refundUsdc", "refund failed", { error: firstLine });
     return { ok: false, reason: firstLine };
   }
+}
+
+// Reads the treasury USDC balance. sourceRef: audit 2026-06-14.
+export async function readTreasuryUsdc(runtime: SwapRuntime): Promise<bigint> {
+  const usdcAddress = runtime.tokenAddresses["USDC"];
+  if (usdcAddress === undefined) {
+    return 0n;
+  }
+  const contract = getContract({ client: runtime.client, chain: runtime.chain, address: usdcAddress });
+  return await readContract({ contract, method: "function balanceOf(address) view returns (uint256)", params: [runtime.account.address] });
+}
+
+// Waits until the treasury USDC balance reaches target, confirming a prepayment
+// settled on-chain before the irreversible swap. Polls forno directly, which is
+// fast, so there is no hosted-facilitator wait and no 524. Returns false on
+// timeout. sourceRef: audit 2026-06-14 (waitUntil submitted race).
+export async function waitForUsdcCredit(
+  runtime: SwapRuntime,
+  target: bigint,
+  attempts: number,
+  delayMs: number,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if ((await readTreasuryUsdc(runtime)) >= target) {
+      return true;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
+  }
+  return (await readTreasuryUsdc(runtime)) >= target;
 }

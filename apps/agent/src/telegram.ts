@@ -75,13 +75,15 @@ export async function startTelegramBot(token: string, deps: TelegramDeps): Promi
     }
     const result = await anchorSha256(deps.notaryRuntime, sha256Input);
     if (result.ok) {
-      deps.events.emit({
-        type: "notary_anchored",
-        sha256: result.sha256,
-        txHash: result.txHash,
-        selfInitiated: false,
-      });
-      await ctx.reply(`Anchored. Transaction: ${result.explorerUrl}`);
+      if (!result.alreadyAnchored) {
+        deps.events.emit({
+          type: "notary_anchored",
+          sha256: result.sha256,
+          txHash: result.txHash,
+          selfInitiated: false,
+        });
+      }
+      await ctx.reply(`Anchored. Receipt: ${result.explorerUrl}`);
     } else {
       await ctx.reply(`Could not anchor: ${result.reason}`);
     }
