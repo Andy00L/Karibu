@@ -22,8 +22,21 @@ export class EventBus {
       logError("EventBus.emit", "refused to emit an invalid event", { error: validation.error });
       return;
     }
+    // One failed subscriber (a dead SSE connection whose write throws) must not
+    // stop the others or propagate to the emitter. Isolate each, and drop the
+    // ones that fail.
+    const failedSubscribers: EventSubscriber[] = [];
     for (const subscriber of this.subscribers) {
-      subscriber(validation.value);
+      try {
+        subscriber(validation.value);
+      } catch (subscriberError) {
+        const message = subscriberError instanceof Error ? subscriberError.message : String(subscriberError);
+        logError("EventBus.emit", "subscriber failed and was dropped", { error: message });
+        failedSubscribers.push(subscriber);
+      }
+    }
+    for (const failedSubscriber of failedSubscribers) {
+      this.subscribers.delete(failedSubscriber);
     }
   }
 

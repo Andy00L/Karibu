@@ -1,0 +1,40 @@
+# Render deployment for the Karibu agent (a single Fastify web service that serves
+# both the x402 API and the live dashboard at /). Secrets are set in the Render
+# dashboard, never committed here (sync: false). The service name karibu-celo gives
+# the URL https://karibu-celo.onrender.com, which matches the registered ERC-8004
+# endpoint. sourceRef: apps/agent/package.json (start: node dist/index.js),
+# apps/agent/src/config.ts (env vars), .env.example.
+services:
+  - type: web
+    name: karibu-celo
+    runtime: node
+    plan: free
+    region: oregon
+    autoDeploy: false
+    buildCommand: corepack enable && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm -r build
+    startCommand: node apps/agent/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: KARIBU_NETWORK
+        value: celo
+      - key: PORT
+        value: "8787"
+      - key: KARIBU_AGENT_ID
+        value: "9373"
+      - key: AGENT_ADDRESS
+        value: "0x1147856217691a72C96F36F04697Abfb7305eF9f"
+      - key: PUBLIC_BASE_URL
+        value: "https://karibu-celo.onrender.com"
+      # Secrets and post-deploy values: set these in the Render dashboard.
+      - key: AGENT_PRIVATE_KEY
+        sync: false
+      - key: THIRDWEB_CLIENT_ID
+        sync: false
+      - key: THIRDWEB_SECRET_KEY
+        sync: false
+      - key: THIRDWEB_SERVER_WALLET_ADDRESS
+        sync: false
+      - key: KARIBU_NOTARY_ADDRESS_MAINNET
+        sync: false
+      - key: KARIBU_DEMO_WALLETS
+        sync: false

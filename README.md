@@ -6,8 +6,18 @@ verifiable receipts on-chain, and it sells all of it as x402-paid services that
 both humans and other agents consume. It bootstraps with a community gas grant,
 then pays its own gas in cUSD from revenue.
 
-Status: built on Celo Sepolia (MODE T, testnet-first). Mainnet transactions
-happen only under the money policy with the operator's per-kind approval.
+Status: registered on Celo mainnet (ERC-8004 agentId 9373) and proven end to end
+on Celo Sepolia. One endpoint serves both the x402 API and a live dashboard at /.
+Mainnet transactions run under the money policy with the operator's per-kind
+approval.
+
+## Proof links (Celo mainnet)
+
+- ERC-8004 agentId 9373 on the Identity Registry
+  0x8004A169FB4a3325136EB29fA0ceB6D2e539a432, owned by the agent wallet
+  0x1147856217691a72C96F36F04697Abfb7305eF9f. Registration tx:
+  https://celoscan.io/tx/0x3c4a32ee9f478344c803c8fc2ff9eae7bfa9ca3e7cb0ac13ffe1625a18fdca09
+- 8004scan profile: https://8004scan.io/agents/celo/9373
 
 ## Proof links (Celo Sepolia, measured, not hardcoded)
 
@@ -50,12 +60,12 @@ Other agents (the other teams)   Humans                   Celo
   +------------------------------------------------------+
           |
           v
-  apps/web (Next.js dashboard) + /verify-receipt
+  live dashboard + /verify-receipt/:hash, both served by the agent
 ```
 
 Repo layout: contracts/ (KaribuNotary + Foundry tests), packages/state-contract
 (shared types and zod schemas), packages/karibu-skill (the installable client),
-apps/agent (the Fastify server), apps/web (the dashboard).
+apps/agent (the Fastify server, the x402 API, and the live dashboard at /).
 
 ## Why each sponsor integration is load-bearing
 
@@ -85,6 +95,22 @@ bash scripts/deploy-sepolia.sh
 
 A one-command end-to-end script (scripts/e2e.sh) that runs a full paid loop is
 added once the x402 server wallet is configured.
+
+## Run it
+
+```bash
+pnpm install && pnpm -r build
+# fill .env from .env.example (agent key, thirdweb x402 credentials, network)
+KARIBU_NETWORK=celo node apps/agent/dist/index.js
+# the x402 API and the live dashboard are now on http://localhost:8787 (/ is the dashboard)
+```
+
+## Deploy
+
+The agent is one stateless Node service. Use the included render.yaml (Render
+Blueprint, service name karibu-celo, which matches the registered endpoint URL) or
+the Dockerfile (Fly, Railway, a VPS). Set the secrets from .env.example in the
+host's dashboard; never commit them. The health check path is /health.
 
 ## What is real and what is not
 

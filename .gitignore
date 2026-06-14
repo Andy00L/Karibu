@@ -7,3 +7,8 @@ dist/
 lib/
 .DS_Store
 *.log
+
+# Ephemeral Self registration QR artifacts, regenerated per session
+apps/agent/self-qr.html
+apps/agent/self-qr-image.txt
+apps/agent/self-deeplink.txt

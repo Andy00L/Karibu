@@ -28,6 +28,7 @@ import type { ReplayGuard } from "./replay-guard.js";
 import type { PayoutPolicy } from "./payout-policy.js";
 import type { RateLimiter } from "./rate-limiter.js";
 import { logError, logInfo } from "./logger.js";
+import { DASHBOARD_HTML } from "./dashboard.js";
 
 export type ServerDependencies = {
   config: AgentConfig;
@@ -85,6 +86,14 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (!deps.rateLimiter.check(request.ip, deps.now())) {
       reply.code(429).send({ error: "rate limit exceeded" });
     }
+  });
+
+  // The live dashboard (the judge's screen), served from the agent so a single
+  // hosted endpoint carries both the API and the UI. It consumes only the public
+  // read-only endpoints and the SSE stream. sourceRef: KARIBU_BUILD_PLAN.md 2.5.
+  app.get("/", async (_request, reply) => {
+    reply.header("content-type", "text/html; charset=utf-8");
+    return DASHBOARD_HTML;
   });
 
   app.get("/health", async () => {
@@ -456,6 +465,6 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     });
   });
 
-  logInfo("buildServer", "routes registered", { routeCount: 12 });
+  logInfo("buildServer", "routes registered", { routeCount: 13 });
   return app;
 }

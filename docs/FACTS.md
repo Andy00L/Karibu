@@ -42,6 +42,12 @@ code(), chain-id() against the public RPCs in section 1. No transactions were se
 - [V-CHAIN] Celo Sepolia Identity Registry 0x8004A818BFB912233c491871b3d84c89A494BD9e
   (symbol AGENT, deployed). Reputation Registry 0x8004B663056A597Dffe9eCcC1965A193B7388713
   (deployed). sourceRef: cast symbol()/code() reads + same docs page.
+- [V-CHAIN, 2026-06-14] Karibu's own registration: agentId 9373 on the Celo MAINNET Identity
+  Registry, register tx 0x3c4a32ee9f478344c803c8fc2ff9eae7bfa9ca3e7cb0ac13ffe1625a18fdca09
+  (block 69558612, status 1); ownerOf(9373) is the agent wallet
+  0x1147856217691a72C96F36F04697Abfb7305eF9f and tokenURI(9373) returns the Karibu
+  registration JSON. agentId 358 on Celo Sepolia (see DECISIONS.md). sourceRef:
+  scripts/register-mainnet.sh + scripts/verify-mainnet-reg.sh, cast reads on forno.celo.org.
 - [V-REPO] register function (the one Karibu uses):
   register(string agentURI) returns (uint256 agentId). Overloads also exist: register()
   and register(string agentURI, MetadataEntry[] metadata). sourceRef:
