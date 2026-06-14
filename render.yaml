@@ -11,7 +11,7 @@ services:
     plan: free
     region: oregon
     autoDeploy: false
-    buildCommand: corepack enable && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm -r build
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm -r build
     startCommand: node apps/agent/dist/index.js
     healthCheckPath: /health
     envVars:
