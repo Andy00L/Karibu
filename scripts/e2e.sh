@@ -60,9 +60,13 @@ if printf '%s' "$HEALTH" | grep -q '"ok":true'; then echo "health ok"; else note
 if curl -s http://127.0.0.1:8899/api/skills | grep -q '"services"'; then echo "skills ok"; else note_fail "skills"; fi
 if curl -s http://127.0.0.1:8899/api/metrics | grep -q '"schemaVersion":1'; then echo "metrics ok"; else note_fail "metrics"; fi
 
-step "x402 paid call"
+step "x402 paid call (self-initiated, labeled)"
 if [ -n "${THIRDWEB_SERVER_WALLET_ADDRESS:-}" ]; then
-  echo "server wallet present; the funded client harness runs here once a client stable is available"
+  if KARIBU_URL=http://127.0.0.1:8899 node apps/agent/x402-client.mjs; then
+    echo "x402 settled call ok"
+  else
+    note_fail "x402 settled call"
+  fi
 else
   echo "SKIP: THIRDWEB_SERVER_WALLET_ADDRESS not set, so x402 settlement is not exercised in this run"
 fi

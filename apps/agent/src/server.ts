@@ -6,9 +6,19 @@ import type { MetricsStore } from "./metrics.js";
 import type { EventBus } from "./events.js";
 import type { SpendTracker } from "./spend-tracker.js";
 import { gatePayment, type PaymentContext } from "./payment.js";
-import { anchorSha256, notaryRequestSchema, type NotaryRuntime } from "./notary.js";
+import {
+  anchorSha256,
+  notaryRequestSchema,
+  readNotaryReceipt,
+  receiptParamsSchema,
+  type NotaryRuntime,
+} from "./notary.js";
 import { quoteFx, fxQuoteRequestSchema, type FxRuntime } from "./fx.js";
+import { executeSwap, fxSwapRequestSchema, type SwapRuntime } from "./swap.js";
 import { type SelfVerifier, verifyParamsSchema } from "./self.js";
+import type { ReplayGuard } from "./replay-guard.js";
+import type { PayoutPolicy } from "./payout-policy.js";
+import type { RateLimiter } from "./rate-limiter.js";
 import { logInfo } from "./logger.js";
 
 export type ServerDependencies = {
@@ -19,7 +29,11 @@ export type ServerDependencies = {
   payment: PaymentContext | null;
   notaryRuntime: NotaryRuntime | null;
   fxRuntime: FxRuntime | null;
+  swapRuntime: SwapRuntime | null;
   selfVerifier: SelfVerifier;
+  replayGuard: ReplayGuard;
+  payoutPolicy: PayoutPolicy;
+  rateLimiter: RateLimiter;
   startedAtMs: number;
   now: () => number;
 };
@@ -38,6 +52,17 @@ function readPaymentHeader(headerValue: string | string[] | undefined): string |
 export function buildServer(deps: ServerDependencies): FastifyInstance {
   const app = Fastify({ logger: false });
 
+  // Per-IP rate limit on every route except the health check, so uptime pings
+  // are never throttled. sourceRef: KARIBU_BUILD_PLAN.md Day 3 hardening.
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url === "/health") {
+      return;
+    }
+    if (!deps.rateLimiter.check(request.ip, deps.now())) {
+      reply.code(429).send({ error: "rate limit exceeded" });
+    }
+  });
+
   app.get("/health", async () => {
     return {
       ok: true,
@@ -46,6 +71,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       x402: deps.payment !== null,
       notary: deps.notaryRuntime !== null,
       fx: deps.fxRuntime !== null,
+      fxSwap: deps.swapRuntime !== null,
       mockStream: deps.config.mockStream,
       uptimeMs: deps.now() - deps.startedAtMs,
     };
@@ -57,6 +83,23 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
 
   app.get("/api/treasury", async () => {
     return deps.spendTracker.status();
+  });
+
+  // Public receipt verifier: render any notary receipt by hash. Free and
+  // read-only. sourceRef: KARIBU_BUILD_PLAN.md section 2.5.
+  app.get("/verify-receipt/:hash", async (request, reply) => {
+    if (deps.notaryRuntime === null) {
+      return reply.code(503).send({ error: "receipt lookup unavailable: chain runtime not configured" });
+    }
+    const parsedParams = receiptParamsSchema.safeParse(request.params);
+    if (!parsedParams.success) {
+      return reply.code(400).send({ error: parsedParams.error.message });
+    }
+    const receipt = await readNotaryReceipt(deps.notaryRuntime, parsedParams.data.hash);
+    if (!receipt.ok) {
+      return reply.code(400).send({ error: receipt.reason });
+    }
+    return receipt;
   });
 
   // SVC-6 discovery: the public service catalog any agent can read for free to
@@ -141,6 +184,12 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.message });
     }
+    if (parsed.data.nonce !== undefined) {
+      const isFreshNonce = deps.replayGuard.checkAndRecord(parsed.data.nonce, deps.now());
+      if (!isFreshNonce) {
+        return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
+      }
+    }
     const anchorResult = await anchorSha256(deps.notaryRuntime, parsed.data.sha256);
     if (!anchorResult.ok) {
       return reply.code(502).send({ error: anchorResult.reason });
@@ -204,6 +253,83 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     return quoteResult.quote;
   });
 
+  // SVC-3 fx-swap, gated by x402. Executes a Mento swap from the treasury and
+  // pays the output to the caller. Self-gated: the payout caps from section 2.3
+  // apply, higher for Self-verified callers. A client nonce guards replay.
+  // sourceRef: KARIBU_BUILD_PLAN.md section 2.1 (SVC-3) and 2.3 (caps).
+  app.post("/api/fx/swap", async (request, reply) => {
+    if (deps.payment === null || deps.swapRuntime === null) {
+      return reply.code(503).send({ error: "fx-swap unavailable: x402 or swap runtime not configured" });
+    }
+    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
+    const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
+    const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
+
+    const gate = await gatePayment(deps.payment, "fx-swap", resourceUrl, "POST", paymentData);
+    if (!gate.paid) {
+      reply.code(gate.status);
+      for (const [headerKey, headerValue] of Object.entries(gate.headers)) {
+        reply.header(headerKey, headerValue);
+      }
+      return gate.body;
+    }
+
+    const parsed = fxSwapRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message });
+    }
+    const swapRequest = parsed.data;
+    if (swapRequest.nonce !== undefined) {
+      const isFreshNonce = deps.replayGuard.checkAndRecord(swapRequest.nonce, deps.now());
+      if (!isFreshNonce) {
+        return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
+      }
+    }
+    const amountNumber = Number(swapRequest.amount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return reply.code(400).send({ error: "amount must be a positive number" });
+    }
+
+    // Self gating: a verified human backing the recipient lifts the payout caps.
+    const verification = await deps.selfVerifier.isHumanBacked(swapRequest.recipient);
+    const payoutDecision = deps.payoutPolicy.evaluate(
+      swapRequest.recipient,
+      amountNumber,
+      verification.humanBacked,
+      deps.now(),
+    );
+    if (!payoutDecision.ok) {
+      return reply.code(403).send({ error: payoutDecision.reason });
+    }
+
+    const swapResult = await executeSwap(
+      deps.swapRuntime,
+      swapRequest.from,
+      swapRequest.to,
+      swapRequest.amount,
+      swapRequest.recipient,
+    );
+    if (!swapResult.ok) {
+      return reply.code(502).send({ error: swapResult.reason });
+    }
+
+    for (const [headerKey, headerValue] of Object.entries(gate.receiptHeaders)) {
+      reply.header(headerKey, headerValue);
+    }
+    const nowMs = deps.now();
+    deps.payoutPolicy.record(swapRequest.recipient, amountNumber, nowMs);
+    deps.spendTracker.recordRevenue(SERVICE_PRICE_USD["fx-swap"]);
+    deps.metrics.recordServicePaid("fx-swap", swapRequest.recipient, nowMs);
+    deps.events.emit({
+      type: "fx_swapped",
+      fromSymbol: swapResult.execution.fromSymbol,
+      toSymbol: swapResult.execution.toSymbol,
+      amountFrom: amountNumber,
+      txHash: swapResult.execution.txHash,
+    });
+    return swapResult.execution;
+  });
+
   // SVC-1 verify, gated by x402. Returns whether a verified human backs a wallet
   // via Self. sourceRef: KARIBU_BUILD_PLAN.md section 2.1 (SVC-1).
   app.get("/api/verify/:wallet", async (request, reply) => {
@@ -262,6 +388,6 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     });
   });
 
-  logInfo("buildServer", "routes registered", { routeCount: 10 });
+  logInfo("buildServer", "routes registered", { routeCount: 12 });
   return app;
 }

@@ -51,6 +51,31 @@ export const FX_TOKENS = {
   },
 } as const satisfies Record<KaribuNetwork, Record<string, string>>;
 
+// Decimals per token symbol, identical on both networks. USDC is 6 decimals;
+// every Mento stable is 18. A swap must scale the input amount by the input
+// token's own decimals, so USDC cannot reuse the 18-decimal path. sourceRef:
+// docs/FACTS.md section 7 (USDC 6dp and USDm 18dp, second-verified on-chain).
+export const TOKEN_DECIMALS = {
+  USDM: 18,
+  CUSD: 18,
+  KESM: 18,
+  CKES: 18,
+  EURM: 18,
+  CEUR: 18,
+  BRLM: 18,
+  USDC: 6,
+} as const satisfies Record<string, number>;
+
+// USDC as the x402 settlement asset per network, with the EIP-712 domain that
+// the transferWithAuthorization signature needs. The Sepolia USDC name() and
+// version() read "USDC" and "2" on-chain. Mainnet must be re-verified before the
+// first mainnet x402 settlement. sourceRef: cast name()/version() on the Sepolia
+// USDC 0x01C5...44E; docs/FACTS.md section 5.
+export const USDC_PAYMENT_ASSET = {
+  "celo-sepolia": { address: FX_TOKENS["celo-sepolia"].USDC, decimals: TOKEN_DECIMALS.USDC, name: "USDC", version: "2" },
+  celo: { address: FX_TOKENS.celo.USDC, decimals: TOKEN_DECIMALS.USDC, name: "USDC", version: "2" },
+} as const satisfies Record<KaribuNetwork, { address: string; decimals: number; name: string; version: string }>;
+
 export type AgentConfig = {
   network: KaribuNetwork;
   port: number;
