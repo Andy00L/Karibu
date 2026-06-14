@@ -62,6 +62,11 @@ process restart clears it. sourceRef: KARIBU_BUILD_PLAN.md section 2.3.
 - ERC-8004 registration: agentId 9373, owner 0x1147856217691a72C96F36F04697Abfb7305eF9f,
   tx 0x3c4a32ee9f478344c803c8fc2ff9eae7bfa9ca3e7cb0ac13ffe1625a18fdca09 (status 1, block
   69558612), shown on 8004scan at https://8004scan.io/agents/celo/9373.
+- Metadata updated to the ERC-8004 services form via setAgentURI (self-initiated config
+  update): tx 0x52fbf3ebf9348e8173fedc01191bea4d36c59cf5903173296f8a0f9a8d226f42 (status 1).
+- KaribuNotary deployed at 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d (native CELO gas).
+- Notary anchor (self-initiated mainnet proof, labeled, native CELO gas):
+  tx 0x73628884efb65dc5b275fee743eccb662eeac5b4694e16821b977c7cf1d13fda (status 1).
 
 No wash volume. No owner or operator feedback. The paid-service flows (x402
 settlement, Mento swap, cUSD-gas anchor, refund) are proven on Celo Sepolia above
