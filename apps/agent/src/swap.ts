@@ -32,7 +32,9 @@ export const fxSwapRequestSchema = z.object({
   to: z.string(),
   amount: z.string(),
   recipient: z.string(),
-  nonce: z.string().optional(),
+  // Required: an independent per-request replay key, beyond the single-use
+  // EIP-3009 payment nonce the facilitator enforces. sourceRef: audit 2026-06-14.
+  nonce: z.string().min(1),
 });
 
 export type SwapRuntime = {
@@ -106,14 +108,23 @@ export function readTransferAmount(
 ): bigint | null {
   const tokenLower = token.toLowerCase();
   const recipientTopic = addressToTopic(recipient);
+  let total = 0n;
+  let matched = false;
+  // Sum every matching Transfer of this token to the recipient in the receipt, so
+  // a multi-hop or fee-on-transfer route reports the net received, not just the
+  // first leg. Skip a malformed data word instead of throwing after the swap has
+  // already moved funds on-chain. sourceRef: audit 2026-06-14.
   for (const log of logs) {
     const topicSignature = log.topics[0]?.toLowerCase();
     const topicTo = log.topics[2]?.toLowerCase();
-    if (log.address.toLowerCase() === tokenLower && topicSignature === TRANSFER_EVENT_TOPIC && topicTo === recipientTopic) {
-      return BigInt(log.data);
+    const isMatch =
+      log.address.toLowerCase() === tokenLower && topicSignature === TRANSFER_EVENT_TOPIC && topicTo === recipientTopic;
+    if (isMatch && /^0x[0-9a-fA-F]+$/.test(log.data)) {
+      total += BigInt(log.data);
+      matched = true;
     }
   }
-  return null;
+  return matched ? total : null;
 }
 
 function isHexCalldata(value: string): value is `0x${string}` {
@@ -170,6 +181,9 @@ export async function executeSwap(
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
     return { ok: false, reason: "recipient must be a 20-byte hex address" };
+  }
+  if (/^0x0{40}$/.test(recipient)) {
+    return { ok: false, reason: "recipient must not be the zero address" };
   }
   const amountInUnits = toTokenUnits(amount, fromDecimals);
   if (amountInUnits === null || amountInUnits <= 0n) {

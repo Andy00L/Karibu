@@ -4,6 +4,7 @@
 // AGENT_PRIVATE_KEY by default; set PAYER_PRIVATE_KEY for a distinct payer. Never
 // logs a private key. sourceRef: packages/karibu-skill/src/index.ts.
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createThirdwebClient, defineChain } from "thirdweb";
@@ -55,7 +56,7 @@ const service = process.env.KARIBU_SERVICE ?? "fx-quote";
 const isSwap = service === "fx-swap";
 const targetUrl = isSwap ? `${baseUrl}/api/fx/swap` : `${baseUrl}/api/fx/quote`;
 const requestBody = isSwap
-  ? { to: process.env.KARIBU_SWAP_TO ?? "USDM", amount: process.env.KARIBU_SWAP_AMOUNT ?? "0.1", recipient: account.address }
+  ? { to: process.env.KARIBU_SWAP_TO ?? "USDM", amount: process.env.KARIBU_SWAP_AMOUNT ?? "0.1", recipient: account.address, nonce: randomUUID() }
   : { from: "USDM", to: "USDC", amount: "1" };
 console.log(`[x402-client] service=${service} payer=${account.address} target=${targetUrl}`);
 

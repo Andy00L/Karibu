@@ -45,9 +45,22 @@ test("readTransferAmount returns null when no matching transfer is present", () 
   assert.equal(readTransferAmount(logs, USDM, RECIPIENT), null);
 });
 
-test("fxSwapRequestSchema requires to, amount, and recipient", () => {
-  const valid = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2", recipient: RECIPIENT });
+test("readTransferAmount sums matching transfers and skips a malformed data word", () => {
+  const fromTopic = "0x0000000000000000000000000000000000000000000000000000000000000009";
+  const toRecipient = topicForAddress(RECIPIENT);
+  const logs = [
+    { address: USDM, topics: [TRANSFER_TOPIC, fromTopic, toRecipient], data: "0x01" },
+    { address: USDM, topics: [TRANSFER_TOPIC, fromTopic, toRecipient], data: "0x02" },
+    { address: USDM, topics: [TRANSFER_TOPIC, fromTopic, toRecipient], data: "0x" },
+  ];
+  assert.equal(readTransferAmount(logs, USDM, RECIPIENT), 3n);
+});
+
+test("fxSwapRequestSchema requires to, amount, recipient, and nonce", () => {
+  const valid = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2", recipient: RECIPIENT, nonce: "n-1" });
   assert.equal(valid.success, true);
-  const missingRecipient = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2" });
+  const missingNonce = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2", recipient: RECIPIENT });
+  assert.equal(missingNonce.success, false);
+  const missingRecipient = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2", nonce: "n-1" });
   assert.equal(missingRecipient.success, false);
 });

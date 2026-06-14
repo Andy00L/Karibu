@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { KaribuEvent, KaribuSnapshot } from "@karibu/state-contract";
 import { SERVICE_PRICE_USD, SERVICE_CATALOG } from "@karibu/state-contract";
-import { NETWORK_CONFIG, type AgentConfig } from "./config.js";
+import { NETWORK_CONFIG, TOKEN_DECIMALS, type AgentConfig } from "./config.js";
 import type { MetricsStore } from "./metrics.js";
 import type { EventBus } from "./events.js";
 import type { SpendTracker } from "./spend-tracker.js";
@@ -14,7 +14,7 @@ import {
   type NotaryRuntime,
 } from "./notary.js";
 import { quoteFx, fxQuoteRequestSchema, type FxRuntime } from "./fx.js";
-import { executeSwap, fxSwapRequestSchema, type SwapRuntime } from "./swap.js";
+import { executeSwap, fxSwapRequestSchema, toTokenUnits, type SwapRuntime } from "./swap.js";
 import { type SelfVerifier, verifyParamsSchema } from "./self.js";
 import type { ReplayGuard } from "./replay-guard.js";
 import type { PayoutPolicy } from "./payout-policy.js";
@@ -185,7 +185,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       return reply.code(400).send({ error: parsed.error.message });
     }
     if (parsed.data.nonce !== undefined) {
-      const isFreshNonce = deps.replayGuard.checkAndRecord(parsed.data.nonce, deps.now());
+      const isFreshNonce = deps.replayGuard.checkAndRecord(`notary:${parsed.data.nonce}`, deps.now());
       if (!isFreshNonce) {
         return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
       }
@@ -271,10 +271,15 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       return reply.code(400).send({ error: parsed.error.message });
     }
     const swapRequest = parsed.data;
-    const amountNumber = Number(swapRequest.amount);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      return reply.code(400).send({ error: "amount must be a positive number" });
+    // Validate the amount with the SAME strict grammar the swap uses (USDC, 6
+    // decimals) BEFORE taking payment, so a malformed amount (too many decimals,
+    // scientific notation, whitespace, a sign) can never be charged for a swap
+    // that would then fail after settlement. sourceRef: audit 2026-06-14.
+    const amountUnits = toTokenUnits(swapRequest.amount, TOKEN_DECIMALS.USDC);
+    if (amountUnits === null || amountUnits <= 0n) {
+      return reply.code(400).send({ error: "amount must be a positive USDC value with at most 6 decimal places" });
     }
+    const amountNumber = Number(swapRequest.amount);
     const totalPriceUsd = amountNumber + SERVICE_PRICE_USD["fx-swap"];
 
     const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
@@ -291,12 +296,12 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     }
 
     // Past payment: the treasury has received amount plus fee in USDC. Guard replay
-    // only now, so the unpaid 402 probe does not consume the nonce.
-    if (swapRequest.nonce !== undefined) {
-      const isFreshNonce = deps.replayGuard.checkAndRecord(swapRequest.nonce, deps.now());
-      if (!isFreshNonce) {
-        return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
-      }
+    // only now, so the unpaid 402 probe does not consume the nonce. The nonce is
+    // required and namespaced per service so a notary nonce cannot burn a swap
+    // nonce. sourceRef: audit 2026-06-14.
+    const isFreshNonce = deps.replayGuard.checkAndRecord(`fx-swap:${swapRequest.nonce}`, deps.now());
+    if (!isFreshNonce) {
+      return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
     }
 
     // Self gating: a verified human backing the recipient lifts the payout caps.
@@ -316,7 +321,9 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     // it whole. sourceRef: docs/DECISIONS.md 2026-06-14 (SVC-3 prepayment fix).
     const swapResult = await executeSwap(deps.swapRuntime, "USDC", swapRequest.to, swapRequest.amount, swapRequest.recipient);
     if (!swapResult.ok) {
-      return reply.code(502).send({ error: swapResult.reason });
+      // executeSwap already logged the detail; return a generic message so raw RPC
+      // or SDK internals are not leaked to the caller. sourceRef: audit 2026-06-14.
+      return reply.code(502).send({ error: "swap execution failed after settlement" });
     }
 
     for (const [headerKey, headerValue] of Object.entries(gate.receiptHeaders)) {
