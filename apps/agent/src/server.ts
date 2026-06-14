@@ -261,6 +261,15 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (deps.payment === null || deps.swapRuntime === null) {
       return reply.code(503).send({ error: "fx-swap unavailable: x402 or swap runtime not configured" });
     }
+    // Treasury safety: this route pays the swap output from the agent treasury,
+    // and the caller-prepayment leg (charging the swap amount itself, not only the
+    // fee) is not yet wired, so each call is a net payout bounded only by
+    // PayoutPolicy. Until prepayment settlement lands, refuse on mainnet where the
+    // funds are real; testnet uses faucet funds. sourceRef: docs/DECISIONS.md
+    // 2026-06-14 (SVC-3 prepayment audit finding).
+    if (deps.config.network !== "celo-sepolia") {
+      return reply.code(503).send({ error: "fx-swap payout is disabled on mainnet until caller-prepayment settlement is wired" });
+    }
     const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
     const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
