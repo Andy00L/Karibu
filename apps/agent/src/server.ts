@@ -165,7 +165,13 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
   // sourceRef: KARIBU_BUILD_PLAN.md 2.2.
   app.get("/.well-known/agent-card.json", async (request) => {
     const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    const baseUrl = `${request.protocol}://${hostHeader}`;
+    // Prefer the configured public base URL so the card advertises the real https
+    // origin even behind a TLS-terminating proxy (request.protocol is http there).
+    // sourceRef: resolveResourceUrl above, apps/agent/src/config.ts (publicBaseUrl).
+    const baseUrl =
+      deps.config.publicBaseUrl.length > 0
+        ? deps.config.publicBaseUrl.replace(/\/$/, "")
+        : `${request.protocol}://${hostHeader}`;
     const networkConfig = NETWORK_CONFIG[deps.config.network];
     return {
       protocolVersion: "0.2.0",
