@@ -142,7 +142,7 @@ export const SERVICE_CATALOG: readonly KaribuServiceDescriptor[] = [
     method: "POST",
     path: "/api/fx/swap",
     priceUsd: SERVICE_PRICE_USD["fx-swap"],
-    description: "Execute a Mento FX swap, Self-gated above the anonymous cap.",
+    description: "Convert prepaid USDC to a Celo stable, paid out to you. Cost is the USDC amount you convert plus the 0.05 fee. Self-gated above the anonymous cap.",
   },
   {
     name: "notary",

@@ -45,9 +45,9 @@ test("readTransferAmount returns null when no matching transfer is present", () 
   assert.equal(readTransferAmount(logs, USDM, RECIPIENT), null);
 });
 
-test("fxSwapRequestSchema requires from, to, amount, and recipient", () => {
-  const valid = fxSwapRequestSchema.safeParse({ from: "USDC", to: "USDM", amount: "0.2", recipient: RECIPIENT });
+test("fxSwapRequestSchema requires to, amount, and recipient", () => {
+  const valid = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2", recipient: RECIPIENT });
   assert.equal(valid.success, true);
-  const missingRecipient = fxSwapRequestSchema.safeParse({ from: "USDC", to: "USDM", amount: "0.2" });
+  const missingRecipient = fxSwapRequestSchema.safeParse({ to: "USDM", amount: "0.2" });
   assert.equal(missingRecipient.success, false);
 });

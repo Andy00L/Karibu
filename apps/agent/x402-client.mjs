@@ -49,13 +49,21 @@ const wallet = createWalletAdapter({
 });
 const paidFetch = wrapFetchWithPayment(fetch, client, wallet, { maxValue: MAX_VALUE_UNITS });
 
-console.log(`[x402-client] payer=${account.address} target=${baseUrl}/api/fx/quote`);
+// Default to the read-only fx-quote. KARIBU_SERVICE=fx-swap exercises the prepay
+// swap path (the caller prepays amount + fee, the agent swaps the prepaid USDC).
+const service = process.env.KARIBU_SERVICE ?? "fx-quote";
+const isSwap = service === "fx-swap";
+const targetUrl = isSwap ? `${baseUrl}/api/fx/swap` : `${baseUrl}/api/fx/quote`;
+const requestBody = isSwap
+  ? { to: process.env.KARIBU_SWAP_TO ?? "USDM", amount: process.env.KARIBU_SWAP_AMOUNT ?? "0.1", recipient: account.address }
+  : { from: "USDM", to: "USDC", amount: "1" };
+console.log(`[x402-client] service=${service} payer=${account.address} target=${targetUrl}`);
 
 try {
-  const response = await paidFetch(`${baseUrl}/api/fx/quote`, {
+  const response = await paidFetch(targetUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from: "USDM", to: "USDC", amount: "1" }),
+    body: JSON.stringify(requestBody),
   });
   const bodyText = await response.text();
   console.log(`[x402-client] status=${response.status}`);

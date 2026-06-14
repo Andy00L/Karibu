@@ -25,8 +25,10 @@ const TRANSFER_EVENT_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a116
 const SLIPPAGE_TOLERANCE_PERCENT = 0.5; // maximum acceptable slippage, percent
 const DEADLINE_MINUTES = 15; // the swap must mine within this many minutes
 
+// The swap input is always the prepaid USDC (the x402 settlement token), so the
+// request carries only the output token, the amount, and the recipient. sourceRef:
+// KARIBU_BUILD_PLAN.md 2.1 (SVC-3: the swap amount is prepaid by the caller).
 export const fxSwapRequestSchema = z.object({
-  from: z.string(),
   to: z.string(),
   amount: z.string(),
   recipient: z.string(),

@@ -80,8 +80,12 @@ export async function gatePayment(
   resourceUrl: string,
   method: "GET" | "POST",
   paymentData: string | null,
+  priceUsdOverride?: number,
 ): Promise<GateOutcome> {
-  const priceUsd = SERVICE_PRICE_USD[service];
+  // fx-swap overrides the fixed price: the caller prepays the swap amount plus the
+  // service fee, so nothing is paid out from the treasury uncovered. Other
+  // services use their fixed catalog price. sourceRef: KARIBU_BUILD_PLAN.md 2.1.
+  const priceUsd = priceUsdOverride ?? SERVICE_PRICE_USD[service];
   const asset = context.paymentAsset;
   if (!isHexAddress(asset.address)) {
     logError("gatePayment", "payment asset address is malformed", { service });

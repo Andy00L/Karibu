@@ -261,20 +261,27 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     if (deps.payment === null || deps.swapRuntime === null) {
       return reply.code(503).send({ error: "fx-swap unavailable: x402 or swap runtime not configured" });
     }
-    // Treasury safety: this route pays the swap output from the agent treasury,
-    // and the caller-prepayment leg (charging the swap amount itself, not only the
-    // fee) is not yet wired, so each call is a net payout bounded only by
-    // PayoutPolicy. Until prepayment settlement lands, refuse on mainnet where the
-    // funds are real; testnet uses faucet funds. sourceRef: docs/DECISIONS.md
-    // 2026-06-14 (SVC-3 prepayment audit finding).
-    if (deps.config.network !== "celo-sepolia") {
-      return reply.code(503).send({ error: "fx-swap payout is disabled on mainnet until caller-prepayment settlement is wired" });
+    // Parse before gating: the caller prepays the swap amount plus the fee, so the
+    // x402 price depends on the requested amount. The swap input is always the
+    // prepaid USDC; only the output token and amount vary. This keeps the treasury
+    // whole: amount plus fee comes in, amount is swapped out, the fee is the
+    // margin. sourceRef: KARIBU_BUILD_PLAN.md 2.1, docs/DECISIONS.md 2026-06-14.
+    const parsed = fxSwapRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.message });
     }
+    const swapRequest = parsed.data;
+    const amountNumber = Number(swapRequest.amount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return reply.code(400).send({ error: "amount must be a positive number" });
+    }
+    const totalPriceUsd = amountNumber + SERVICE_PRICE_USD["fx-swap"];
+
     const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
     const resourceUrl = `${request.protocol}://${hostHeader}${request.url}`;
     const paymentData = readPaymentHeader(request.headers["x-payment"] ?? request.headers["payment-signature"]);
 
-    const gate = await gatePayment(deps.payment, "fx-swap", resourceUrl, "POST", paymentData);
+    const gate = await gatePayment(deps.payment, "fx-swap", resourceUrl, "POST", paymentData, totalPriceUsd);
     if (!gate.paid) {
       reply.code(gate.status);
       for (const [headerKey, headerValue] of Object.entries(gate.headers)) {
@@ -283,20 +290,13 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       return gate.body;
     }
 
-    const parsed = fxSwapRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ error: parsed.error.message });
-    }
-    const swapRequest = parsed.data;
+    // Past payment: the treasury has received amount plus fee in USDC. Guard replay
+    // only now, so the unpaid 402 probe does not consume the nonce.
     if (swapRequest.nonce !== undefined) {
       const isFreshNonce = deps.replayGuard.checkAndRecord(swapRequest.nonce, deps.now());
       if (!isFreshNonce) {
         return reply.code(409).send({ error: "duplicate request nonce within the replay window" });
       }
-    }
-    const amountNumber = Number(swapRequest.amount);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      return reply.code(400).send({ error: "amount must be a positive number" });
     }
 
     // Self gating: a verified human backing the recipient lifts the payout caps.
@@ -311,13 +311,10 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       return reply.code(403).send({ error: payoutDecision.reason });
     }
 
-    const swapResult = await executeSwap(
-      deps.swapRuntime,
-      swapRequest.from,
-      swapRequest.to,
-      swapRequest.amount,
-      swapRequest.recipient,
-    );
+    // The swap input is the prepaid USDC; the output token and amount are the
+    // caller's. The agent fronts the swap from treasury and the prepayment makes
+    // it whole. sourceRef: docs/DECISIONS.md 2026-06-14 (SVC-3 prepayment fix).
+    const swapResult = await executeSwap(deps.swapRuntime, "USDC", swapRequest.to, swapRequest.amount, swapRequest.recipient);
     if (!swapResult.ok) {
       return reply.code(502).send({ error: swapResult.reason });
     }
