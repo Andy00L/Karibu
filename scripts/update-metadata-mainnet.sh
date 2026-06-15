@@ -22,9 +22,15 @@ BASE_URL="https://karibu-celo.onrender.com"
 if [ ! -f docs/karibu.png ]; then echo "ERROR=brand_png_missing"; exit 1; fi
 IMG_URI="data:image/png;base64,$(base64 -w0 docs/karibu.png)"
 NOW="$(date +%s)"
+# Declare the MCP service only when its endpoint is actually live, so the metadata
+# never points 8004scan at a 404. The /mcp and /.well-known/mcp.json routes ship in
+# the agent deploy. sourceRef: apps/agent/src/mcp.ts.
+MCP_CODE="$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$BASE_URL/.well-known/mcp.json" 2>/dev/null || echo 000)"
+if [ "$MCP_CODE" = "200" ]; then MCP_LIVE=true; else MCP_LIVE=false; fi
+echo "MCP_ENDPOINT_LIVE=$MCP_LIVE (http $MCP_CODE)"
 
 # Build the registration JSON with jq so every value is escaped correctly.
-REGISTRATION_JSON="$(jq -cn --arg img "$IMG_URI" --arg base "$BASE_URL" --arg reg "$IDENTITY_REGISTRY" --argjson now "$NOW" '{
+REGISTRATION_JSON="$(jq -cn --arg img "$IMG_URI" --arg base "$BASE_URL" --arg reg "$IDENTITY_REGISTRY" --argjson now "$NOW" --argjson mcplive "$MCP_LIVE" '{
   type:"https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   name:"Karibu",
   description:"Gateway agent on Celo: Self human-verification, Mento FX between Celo stables, and on-chain notary receipts, sold as x402-paid services to humans and other agents.",
@@ -35,14 +41,15 @@ REGISTRATION_JSON="$(jq -cn --arg img "$IMG_URI" --arg base "$BASE_URL" --arg re
   updatedAt:$now,
   active:true,
   x402Support:true,
-  services:[
-    {name:"A2A", endpoint:($base+"/.well-known/agent-card.json"), version:"0.2.0"},
+  services:([
+    {name:"A2A", endpoint:($base+"/.well-known/agent-card.json"), version:"0.2.0", a2aSkills:["technology/blockchain/smart_contracts","finance_and_business/finance/digital_payments","tool_interaction/automation/workflow_automation"]},
+    {name:"OASF", version:"v0.8.0", endpoint:"https://github.com/agntcy/oasf/", skills:["tool_interaction/automation/workflow_automation"], domains:["technology/blockchain/cryptocurrency","technology/blockchain/smart_contracts","finance_and_business/finance/digital_payments"]},
     {name:"web", description:"Karibu web endpoint", endpoint:$base, method:"GET", protocol:"Web"},
     {name:"verify", description:"Whether a verified human backs a wallet, via Self.", endpoint:($base+"/api/verify/:wallet"), method:"GET", paymentRequired:true},
     {name:"fx-quote", description:"A Mento FX quote between Celo stables.", endpoint:($base+"/api/fx/quote"), method:"POST", paymentRequired:true},
     {name:"fx-swap", description:"Convert prepaid USDC to a Celo stable, paid out to you. Cost is the USDC amount you convert plus the 0.05 fee. Self-gated above the anonymous cap.", endpoint:($base+"/api/fx/swap"), method:"POST", paymentRequired:true},
     {name:"notary", description:"Anchor a sha256 hash on Celo and return a receipt.", endpoint:($base+"/api/notary"), method:"POST", paymentRequired:true}
-  ],
+  ] + (if $mcplive then [{name:"MCP", version:"2025-06-18", endpoint:($base+"/.well-known/mcp.json"), mcpTools:["discover","verify","fx_quote","fx_swap","notary"]}] else [] end)),
   registrations:[{agentId:9373, agentRegistry:("eip155:42220:"+$reg)}],
   supportedTrust:["reputation"]
 }')"

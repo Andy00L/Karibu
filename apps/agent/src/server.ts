@@ -31,6 +31,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { logError, logInfo } from "./logger.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+import { buildMcpServerCard, handleMcpRequest } from "./mcp.js";
 
 // The brand image served at /karibu.png and referenced from the ERC-8004 metadata
 // image field. Read once from the repo's docs folder relative to the process cwd
@@ -85,6 +86,18 @@ function resolveResourceUrl(
   }
   const host = typeof hostHeader === "string" ? hostHeader : "localhost";
   return `${protocol}://${host}${url}`;
+}
+
+// Resolves the public origin to advertise: the configured base URL when set (so it
+// is correct behind a TLS-terminating proxy, where request.protocol is http), else
+// the request's protocol and Host header. sourceRef: resolveResourceUrl above,
+// apps/agent/src/config.ts (publicBaseUrl).
+function resolveBaseUrl(publicBaseUrl: string, protocol: string, hostHeader: string | string[] | undefined): string {
+  if (publicBaseUrl.length > 0) {
+    return publicBaseUrl.replace(/\/$/, "");
+  }
+  const host = typeof hostHeader === "string" ? hostHeader : "localhost";
+  return `${protocol}://${host}`;
 }
 
 export function buildServer(deps: ServerDependencies): FastifyInstance {
@@ -199,14 +212,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
   // A2A agent card: how another agent discovers Karibu and its skills.
   // sourceRef: KARIBU_BUILD_PLAN.md 2.2.
   app.get("/.well-known/agent-card.json", async (request) => {
-    const hostHeader = typeof request.headers.host === "string" ? request.headers.host : "localhost";
-    // Prefer the configured public base URL so the card advertises the real https
-    // origin even behind a TLS-terminating proxy (request.protocol is http there).
-    // sourceRef: resolveResourceUrl above, apps/agent/src/config.ts (publicBaseUrl).
-    const baseUrl =
-      deps.config.publicBaseUrl.length > 0
-        ? deps.config.publicBaseUrl.replace(/\/$/, "")
-        : `${request.protocol}://${hostHeader}`;
+    const baseUrl = resolveBaseUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host);
     const networkConfig = NETWORK_CONFIG[deps.config.network];
     return {
       protocolVersion: "0.2.0",
@@ -233,6 +239,25 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
         tags: ["celo", "x402", "payments"],
       })),
     };
+  });
+
+  // MCP server card: explorers and MCP clients read this static descriptor to
+  // discover Karibu's MCP endpoint and its tools. sourceRef: apps/agent/src/mcp.ts.
+  app.get("/.well-known/mcp.json", async (request) => {
+    return buildMcpServerCard(resolveBaseUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host));
+  });
+
+  // MCP endpoint (streamable-http transport): one JSON-RPC message per request.
+  // initialize and tools/list are complete; tools/call returns the live catalog and
+  // points paid tools at their x402 HTTP routes. A notification (no id) gets an
+  // empty 202. sourceRef: apps/agent/src/mcp.ts.
+  app.post("/mcp", async (request, reply) => {
+    const baseUrl = resolveBaseUrl(deps.config.publicBaseUrl, request.protocol, request.headers.host);
+    const response = handleMcpRequest(request.body, baseUrl);
+    if (response === null) {
+      return reply.code(202).send();
+    }
+    return response;
   });
 
   // SVC-4 notary, gated by x402. Unpaid returns the 402 challenge; paid anchors
@@ -510,6 +535,6 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     });
   });
 
-  logInfo("buildServer", "routes registered", { routeCount: 14 });
+  logInfo("buildServer", "routes registered", { routeCount: 16 });
   return app;
 }
