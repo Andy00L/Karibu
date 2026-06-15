@@ -1,60 +1,76 @@
 # DEMO_SCRIPT.md: the 120-second demo
 
-This is the timed script for the submission video. Drew records it; the agent
-drafts it. Every number shown is measured and every transaction is real.
-sourceRef: KARIBU_BUILD_PLAN.md section 8.
+The timed script for the submission video. Drew records it; the agent drafts it.
+Every number shown is measured and every transaction is real. Nothing is staged:
+if it is not demonstrable today it is not in the script. sourceRef:
+KARIBU_BUILD_PLAN.md section 8, docs/MOCKS.md (honesty ledger).
 
-## Prerequisites before recording
+## What is honestly demonstrable today (Celo mainnet, agentId 9373)
 
-- The agent is running with the thirdweb server wallet set, so a paid x402 call
-  settles live and the dashboard tick increments.
-- For the live local-currency FX swap, record during an open Mento forex window
-  (Sunday evening, after about 5pm ET; weekends are closed). USD-stable swaps
-  (USDm to USDC) work at any hour as a fallback live swap.
-- If the gas grant has landed, the registration and the headline swap are on
-  mainnet; otherwise the video states plainly that the activity is Celo Sepolia
-  (MODE T) and the counters are testnet counters.
+- Live agent and dashboard at https://karibu-celo.onrender.com; /health reports
+  x402, notary, fx, fxSwap all true.
+- ERC-8004 identity on 8004scan https://8004scan.io/agents/celo/9373, with the
+  brand avatar and complete metadata (services form, tags, agent_type, version).
+- The x402 paywall is real: an unpaid call to a paid endpoint returns a live HTTP
+  402 challenge. That is shown directly, without faking a settlement.
+- On-chain notary: KaribuNotary 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d, with
+  real mainnet anchors (including this submission document, notarized on-chain).
+- Tests: 17 Foundry contract tests and 36 agent tests pass.
+- The full paid money path (Mento swap, x402 settlement, gas paid in cUSD via fee
+  abstraction, refund on failure) is proven end to end on Celo Sepolia, labeled as
+  testnet. It is not presented as mainnet.
+
+What is NOT shown, because it is not real yet: third-party payments, a flipped
+Self badge, feedback, or non-zero revenue. The dashboard shows the true counters.
 
 ## Script
 
 ```
-0:00-0:10  Hook on the live dashboard. "This is Karibu, and those ticks are
-           other agents paying it right now." The Activity counter increments
-           on a real x402 settlement.
+0:00-0:15  Hook on the live dashboard (karibu-celo.onrender.com). "Karibu is a
+           live gateway agent on Celo mainnet, agentId 9373." Show /health: four
+           services up. The counters are honest, including where they are zero.
 
-0:10-0:35  Mission frame. Celo is stablecoin payments for real people. Agents
-           need two missing pieces: proof a human is behind a wallet, and FX
-           between local stables. Karibu sells both, plus on-chain notary
-           receipts, over x402.
+0:15-0:40  Mission. Celo is stablecoin payments for real people. Agents need three
+           missing pieces: proof a human backs a wallet (Self), FX between local
+           stables (Mento), and tamper-evident receipts (notary). Karibu sells all
+           three over x402 and pays its own gas in cUSD.
 
-0:35-1:10  Live product. Drew's phone: a Self scan flips the Human-backed badge,
-           and a gated cUSD to local-stable payout executes through the Telegram
-           bot. Then a terminal: another agent installs the skill with one
-           command (npx, the karibu-skill package) and pays /api/verify; the
-           settlement and the SSE event appear on the dashboard.
+0:40-1:10  Live product, honestly. Free discovery first: /api/skills (the catalog)
+           and the A2A card. Then the paywall: curl POST /api/notary with no
+           payment returns a real HTTP 402 x402 challenge on screen. Then the
+           client: one npx command installs karibu-skill, the package that teaches
+           any agent to discover and pay these endpoints.
 
-1:10-1:40  On-chain proof. The explorer: the swap transaction and a notary
-           anchor with the fee paid in cUSD. 8004scan: the agentId, the score,
-           third-party feedback. forge test: 17 passing.
+1:10-1:40  On-chain proof (the core of the pitch). Celoscan: the ERC-8004
+           registration, the KaribuNotary contract, and a mainnet notary anchor of
+           this very submission. 8004scan: agentId 9373, the avatar, the metadata.
+           Terminal: forge test (17 passing) and the agent tests (36 passing).
 
-1:40-2:00  The loop. The Treasury card: earned X cUSD, paid Y gas, net positive;
-           the agent is self-funding since its first customer. "Registered,
-           verified, earning. Karibu stays after the hackathon: the Agent Visa
-           application is filed." End on the live feed.
+1:40-2:00  The proven money path and the close. Celo Sepolia explorer: the Mento
+           swap, the x402-settled paid swap, the cUSD-gas anchor, and the refund on
+           a failed swap, all real testnet transactions, labeled testnet. "On
+           mainnet the identity, the notary, and the x402 paywall are live; revenue
+           begins with the first third-party call, and every hackathon team's agent
+           is a customer one npx install away." End on the live dashboard.
 ```
 
-## What is real today (Celo Sepolia, MODE T)
+## On-chain references (Celo mainnet)
 
-- agentId 358, register tx
-  0xc200567358a8f56cd745b1d8ce9585652e95306ebe16c2024b22eb2be1d8caeb.
-- KaribuNotary 0x42B8e75E43E28577E412026ceDb511b5B3cf0f41, anchor tx
-  0x90c3aa9598964dc8d5689c9aa1e6c185cd7b49e6cd24f752fd7cb220242c7a4c.
-- The agent serves verify, fx-quote, notary behind x402, plus discovery and the
-  A2A card; e2e.sh passes; 17 Foundry tests pass.
+- Registration tx 0x3c4a32ee9f478344c803c8fc2ff9eae7bfa9ca3e7cb0ac13ffe1625a18fdca09.
+- KaribuNotary 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d; anchors:
+  0x73628884efb65dc5b275fee743eccb662eeac5b4694e16821b977c7cf1d13fda (proof) and
+  0x9fe634ad732b51f106425eb5f11e0abf318d7df219bb83177031b734d2024a30 (this
+  submission document, anchorCount 2).
+- Metadata setAgentURI: services form
+  0x52fbf3ebf9348e8173fedc01191bea4d36c59cf5903173296f8a0f9a8d226f42; image and
+  completeness 0x75e00e402b910c358e47f961ad95c6e7f2f553f23b4c05823e50f9783f8a2209.
 
 ## Honesty notes for the recording
 
-- Do not show the MOCK_STREAM development feed as real activity. Record against
-  real settlements once the server wallet is set.
-- Label testnet activity as testnet. Never present Sepolia counters as mainnet.
-- The FX swap shown live must be in an open Mento market window.
+- Do not show the MOCK_STREAM development feed as real activity. The dashboard is
+  honest by construction; show it as is, zeros included.
+- The Self human-backed badge stays "pending": the on-chain human-proof lookup is
+  not wired yet, so no caller is shown as verified. Do not stage a flip.
+- Label all Sepolia activity as testnet. Never present testnet counters as mainnet.
+- If recording a live FX swap, do it in an open Mento forex window; USD-stable
+  swaps (USDm to USDC) work at any hour as the fallback.

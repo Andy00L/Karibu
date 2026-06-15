@@ -72,6 +72,12 @@ attestation source is connected. sourceRef: apps/agent/src/self.ts.
   69558612), shown on 8004scan at https://8004scan.io/agents/celo/9373.
 - Metadata updated to the ERC-8004 services form via setAgentURI (self-initiated config
   update): tx 0x52fbf3ebf9348e8173fedc01191bea4d36c59cf5903173296f8a0f9a8d226f42 (status 1).
+- Profile image and metadata completeness set via setAgentURI (self-initiated config
+  updates, native CELO gas, no external hosting): a self-contained data:image/png brand
+  image (tx 0x04ab187e6006ed8bac29b6e547d35f6ebc7b5bbef29fc954994dd44f363df0cb, status 1),
+  then the full metadata adding agent_type, version, tags, and updatedAt for 8004scan
+  completeness (tx 0x75e00e402b910c358e47f961ad95c6e7f2f553f23b4c05823e50f9783f8a2209,
+  status 1). The agent wallet is ownerOf(9373); the registry blocks any non-owner here.
 - KaribuNotary deployed at 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d (native CELO gas).
 - Notary anchor (self-initiated mainnet proof, labeled, native CELO gas):
   tx 0x73628884efb65dc5b275fee743eccb662eeac5b4694e16821b977c7cf1d13fda (status 1).
