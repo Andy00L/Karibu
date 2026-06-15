@@ -15,6 +15,11 @@ export class MetricsStore {
   private readonly serviceCallCounts = new Map<ServiceName, number>();
   private readonly txTimestampsMs: number[] = [];
   private feedbackCount = 0;
+  // Count of distinct notary anchors already on-chain, read from
+  // KaribuNotary.anchorCount at startup. Added to txCountTotal so the dashboard
+  // reflects real historical anchors after a redeploy instead of resetting to
+  // zero. sourceRef: audit 2026-06-14 (in-memory metrics reset).
+  private onchainAnchorBaseline = 0;
 
   constructor(network: KaribuNetwork, agentId: string, demoWallets: ReadonlySet<string>) {
     this.network = network;
@@ -61,6 +66,17 @@ export class MetricsStore {
     this.feedbackCount += 1;
   }
 
+  // Seeds the count of notary anchors already on-chain so txCountTotal survives a
+  // restart. Live anchors in this process add on top of the baseline; the next
+  // restart re-reads the now-higher on-chain count, so nothing is double counted.
+  // The 24 hour window stays measured from live timestamps only, so a historical
+  // anchor never inflates the recent count. sourceRef: audit 2026-06-14.
+  seedOnchainAnchors(count: number): void {
+    if (Number.isFinite(count) && count >= 0) {
+      this.onchainAnchorBaseline = Math.floor(count);
+    }
+  }
+
   serviceCallCount(service: ServiceName): number {
     return this.serviceCallCounts.get(service) ?? 0;
   }
@@ -78,7 +94,7 @@ export class MetricsStore {
       network: this.network,
       agentId: this.agentId,
       selfVerified: this.selfVerified,
-      txCountTotal: this.txTimestampsMs.length,
+      txCountTotal: this.txTimestampsMs.length + this.onchainAnchorBaseline,
       txCount24h: countLast24h,
       uniqueClientWallets: this.clientWallets.size,
       revenueCusd,

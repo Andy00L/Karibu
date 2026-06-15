@@ -86,6 +86,27 @@ export async function anchorSha256(runtime: NotaryRuntime, sha256Input: string):
   }
 }
 
+export type AnchorCountResult = { ok: true; count: number } | { ok: false; reason: string };
+
+// Reads the total number of distinct hashes anchored, on-chain and read-only.
+// Used at startup to seed the dashboard tx count so it reflects real historical
+// anchors after a restart instead of resetting to zero. Errors as values.
+// sourceRef: audit 2026-06-14 (in-memory metrics reset on redeploy).
+export async function readAnchorCount(runtime: NotaryRuntime): Promise<AnchorCountResult> {
+  const contract = getContract({ client: runtime.client, chain: runtime.chain, address: runtime.notaryAddress });
+  try {
+    const count = await readContract({
+      contract,
+      method: "function anchorCount() view returns (uint256)",
+      params: [],
+    });
+    return { ok: true, count: Number(count) };
+  } catch (readError) {
+    const message = readError instanceof Error ? readError.message : String(readError);
+    return { ok: false, reason: message };
+  }
+}
+
 export type NotaryReceipt =
   | {
       ok: true;

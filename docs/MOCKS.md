@@ -48,6 +48,14 @@ Notary and swap requests may carry a client nonce; the server rejects a
 duplicate nonce within a 24 hour window. The store is in-memory for now, so a
 process restart clears it. sourceRef: KARIBU_BUILD_PLAN.md section 2.3.
 
+## Self verification (interface stub)
+
+The verify service and the Self payout-gating are implemented, but the on-chain
+human-proof lookup is not yet wired, so isHumanBacked reports every caller
+unverified (humanBacked false) and the payout policy applies the anonymous cap to
+all callers. No caller is ever shown as Self-verified until the real on-chain
+attestation source is connected. sourceRef: apps/agent/src/self.ts.
+
 ## Real activity so far (Celo Sepolia, MODE T)
 
 - ERC-8004 registration: agentId 358, owner 0x1147856217691a72C96F36F04697Abfb7305eF9f,
@@ -67,6 +75,12 @@ process restart clears it. sourceRef: KARIBU_BUILD_PLAN.md section 2.3.
 - KaribuNotary deployed at 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d (native CELO gas).
 - Notary anchor (self-initiated mainnet proof, labeled, native CELO gas):
   tx 0x73628884efb65dc5b275fee743eccb662eeac5b4694e16821b977c7cf1d13fda (status 1).
+- Notary anchor of the submission document itself (self-initiated, labeled, native
+  CELO gas): the sha256 of docs/SUBMISSION_PACK.md at this commit
+  (0x17900bfc966c92ed92b48fd158fd5f0a1d5b85547a6209e3bc6ddb5db821ac8e) anchored at
+  tx 0x9fe634ad732b51f106425eb5f11e0abf318d7df219bb83177031b734d2024a30 (status 1),
+  bringing anchorCount to 2. Anyone can sha256 the committed file and confirm it is
+  anchored. The dashboard txCountTotal is seeded from this on-chain anchorCount.
 
 No wash volume. No owner or operator feedback. The paid-service flows (x402
 settlement, Mento swap, cUSD-gas anchor, refund) are proven on Celo Sepolia above

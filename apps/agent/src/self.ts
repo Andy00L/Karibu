@@ -17,11 +17,13 @@ export type SelfVerifier = {
   isHumanBacked: (wallet: string) => Promise<HumanBackedResult>;
 };
 
-// Self's deployment on Celo Sepolia is not confirmed in Phase 0, so the verifier
-// is the documented interface stub on testnet and says so honestly. The real
-// on-chain Self human-proof query (SelfAgentRegistry on mainnet) replaces this
-// once the grant lands and the addresses are second-verified on-chain.
-// sourceRef: KARIBU_BUILD_PLAN.md Day 1 item 5 and docs/FACTS.md section 4.
+// The on-chain Self human-proof query is not yet wired on any network, so the
+// verifier is an honest interface stub: it always reports the caller unverified
+// (humanBacked false), and the payout policy treats every caller at the anonymous
+// cap. Wiring the real query (a Self human-attestation registry on Celo mainnet,
+// address to be second-verified on-chain before use) only flips results to true
+// for genuinely verified callers; it changes no other behavior. sourceRef:
+// KARIBU_BUILD_PLAN.md Day 1 item 5, docs/FACTS.md section 4, audit 2026-06-14.
 export function createSelfVerifier(network: KaribuNetwork): SelfVerifier {
   return {
     async isHumanBacked(wallet: string): Promise<HumanBackedResult> {
@@ -30,7 +32,7 @@ export function createSelfVerifier(network: KaribuNetwork): SelfVerifier {
         humanBacked: false,
         source: "self-agent-id",
         network,
-        note: "Self human-proof lookup is wired on mainnet only; on this network the result is the documented interface stub.",
+        note: "Self human-proof lookup is not yet wired to an on-chain registry, so every caller is reported unverified (humanBacked false) and treated at the anonymous payout cap. The Self-gating interface and payout policy are live; only the on-chain attestation source is pending.",
       };
     },
   };

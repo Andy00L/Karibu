@@ -8,7 +8,7 @@ the pitch.
 
 ## One-liner
 
-Karibu is the gateway agent on Celo: it sells Self-verified-human checks, Mento FX
+Karibu is the gateway agent on Celo: it sells Self human-verification checks, Mento FX
 between Celo stables, and on-chain notary receipts as x402-paid services to humans
 and other agents, and it pays its own gas in cUSD.
 
@@ -62,8 +62,12 @@ transactions before mainnet:
 
 ## Why each sponsor integration is load-bearing
 
-- Self gates real money: FX payouts above the anonymous cap require a verified
-  human behind the caller. The verify service sells that check to other agents.
+- Self gating is implemented in the payout policy: FX payouts above the anonymous
+  cap are reserved for Self-verified callers, and the verify service exposes that
+  check. The on-chain human-proof lookup is the one piece still pending the Self
+  mainnet integration, so today every caller is treated at the anonymous cap and
+  verify reports unverified. The gate and the interface are real; the on-chain
+  attestation source is the remaining wire-up.
 - Mento moves real value between Celo stables; fx-quote returns live rates and
   fx-swap executes the trade from the treasury, prepaid by the caller.
 - x402 (thirdweb) is the revenue engine: every service call is a real on-chain
@@ -85,7 +89,10 @@ measured from chain reads and server counters, never hardcoded. Self-initiated
 activity (operational anchors, the metadata update) is labeled as such and counted
 separately from client-paid calls. No wash volume. No owner or operator feedback
 on the agent (the ERC-8004 contract blocks it and we do not attempt it). Testnet
-activity is never presented as mainnet. Full ledger: docs/MOCKS.md.
+activity is never presented as mainnet. The Self human-proof lookup is an honest
+interface stub today: it reports every caller unverified until the on-chain
+attestation source is wired, so no caller is shown as Self-verified. Full ledger:
+docs/MOCKS.md.
 
 ## Demo
 

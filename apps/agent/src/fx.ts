@@ -51,6 +51,12 @@ function toWei18(amount: string): bigint | null {
   const dotIndex = trimmed.indexOf(".");
   const wholePart = dotIndex === -1 ? trimmed : trimmed.slice(0, dotIndex);
   const fractionRaw = dotIndex === -1 ? "" : trimmed.slice(dotIndex + 1);
+  // Reject more precision than 18 decimals instead of silently truncating, so a
+  // quote can never present an over-precise amount as a rounded one. Mirrors
+  // toTokenUnits in swap.ts. sourceRef: audit 2026-06-14.
+  if (fractionRaw.length > 18) {
+    return null;
+  }
   const paddedFraction = `${fractionRaw}${"0".repeat(18)}`.slice(0, 18);
   return BigInt(wholePart) * 10n ** 18n + BigInt(paddedFraction);
 }

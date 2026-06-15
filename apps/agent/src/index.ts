@@ -5,7 +5,7 @@ import { EventBus } from "./events.js";
 import { SpendTracker } from "./spend-tracker.js";
 import { buildServer } from "./server.js";
 import { buildThirdwebClient, buildPaymentContext, type PaymentContext } from "./payment.js";
-import type { NotaryRuntime } from "./notary.js";
+import { readAnchorCount, type NotaryRuntime } from "./notary.js";
 import { createFxRuntime, type FxRuntime } from "./fx.js";
 import { createSwapRuntime, type SwapRuntime } from "./swap.js";
 import { PayoutPolicy } from "./payout-policy.js";
@@ -98,6 +98,18 @@ async function main(): Promise<void> {
   } catch (fxError) {
     const message = fxError instanceof Error ? fxError.message : String(fxError);
     logError("main", "fx runtime init failed", { error: message });
+  }
+
+  // Seed txCountTotal from the on-chain anchor count so the dashboard reflects real
+  // historical anchors after a redeploy, not zero. sourceRef: audit 2026-06-14.
+  if (notaryRuntime !== null) {
+    const anchorCountResult = await readAnchorCount(notaryRuntime);
+    if (anchorCountResult.ok) {
+      metrics.seedOnchainAnchors(anchorCountResult.count);
+      logInfo("main", "seeded tx count from on-chain anchors", { anchorCount: anchorCountResult.count });
+    } else {
+      logInfo("main", "could not seed on-chain anchor count", { reason: anchorCountResult.reason });
+    }
   }
 
   const app = buildServer({

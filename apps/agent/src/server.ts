@@ -27,8 +27,21 @@ import { type SelfVerifier, verifyParamsSchema } from "./self.js";
 import type { ReplayGuard } from "./replay-guard.js";
 import type { PayoutPolicy } from "./payout-policy.js";
 import type { RateLimiter } from "./rate-limiter.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { logError, logInfo } from "./logger.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
+
+// The brand image served at /karibu.png and referenced from the ERC-8004 metadata
+// image field. Read once from the repo's docs folder relative to the process cwd
+// (the repo root on Render). An absent file degrades to a 404, never a crash.
+// sourceRef: audit 2026-06-14 (the 8004scan profile image was a dead GitHub URL).
+let brandImagePng: Buffer | null = null;
+try {
+  brandImagePng = readFileSync(join(process.cwd(), "docs", "karibu.png"));
+} catch {
+  brandImagePng = null;
+}
 
 export type ServerDependencies = {
   config: AgentConfig;
@@ -75,7 +88,11 @@ function resolveResourceUrl(
 }
 
 export function buildServer(deps: ServerDependencies): FastifyInstance {
-  const app = Fastify({ logger: false });
+  // trustProxy resolves the real client IP from X-Forwarded-For behind Render's
+  // TLS proxy, so the per-IP rate limiter keys on the caller, not the single proxy
+  // socket that would otherwise put every client in one bucket. sourceRef: audit
+  // 2026-06-14 (rate limiter behind a proxy).
+  const app = Fastify({ logger: false, trustProxy: true });
 
   // Per-IP rate limit on every route except the health check, so uptime pings
   // are never throttled. sourceRef: KARIBU_BUILD_PLAN.md Day 3 hardening.
@@ -94,6 +111,17 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
   app.get("/", async (_request, reply) => {
     reply.header("content-type", "text/html; charset=utf-8");
     return DASHBOARD_HTML;
+  });
+
+  // The brand image, served from the agent so the ERC-8004 profile image does not
+  // depend on a GitHub raw URL that can move. sourceRef: audit 2026-06-14.
+  app.get("/karibu.png", async (_request, reply) => {
+    if (brandImagePng === null) {
+      return reply.code(404).send({ error: "brand image not available" });
+    }
+    reply.header("content-type", "image/png");
+    reply.header("cache-control", "public, max-age=86400");
+    return reply.send(brandImagePng);
   });
 
   app.get("/health", async () => {
@@ -154,10 +182,17 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
   // docs/FACTS.md section 3 and KARIBU_BUILD_PLAN.md 2.2.
   app.get("/.well-known/agent-registration.json", async () => {
     const networkConfig = NETWORK_CONFIG[deps.config.network];
+    // The registrations array in CAIP-10 form (eip155:<chainId>:<registry> plus the
+    // numeric agentId) is the shape the 8004scan endpoint verifier matches against
+    // the on-chain registration. A flat {agentRegistry, agentId, chainId} is not
+    // recognized. sourceRef: a verified agent's served file (Toppa, agentId 1870).
     return {
-      agentRegistry: networkConfig.identityRegistry,
-      agentId: deps.config.agentId,
-      chainId: networkConfig.chainId,
+      registrations: [
+        {
+          agentId: Number(deps.config.agentId),
+          agentRegistry: `eip155:${networkConfig.chainId}:${networkConfig.identityRegistry}`,
+        },
+      ],
     };
   });
 
@@ -344,7 +379,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
 
     // Self gating: a verified human backing the recipient lifts the payout caps.
     const verification = await deps.selfVerifier.isHumanBacked(swapRequest.recipient);
-    const payoutDecision = deps.payoutPolicy.evaluate(
+    const payoutDecision = deps.payoutPolicy.reserve(
       swapRequest.recipient,
       amountNumber,
       verification.humanBacked,
@@ -365,6 +400,9 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     const isSelfPay = gate.payer !== null && gate.payer.toLowerCase() === deps.config.agentAddress.toLowerCase();
     const credited = isSelfPay ? true : await waitForUsdcCredit(deps.swapRuntime, usdcBefore + totalUnits, 15, 2000);
     if (!credited) {
+      // The payout never happened; release the reservation so it does not hold
+      // against the wallet's daily cap. sourceRef: audit 2026-06-14.
+      deps.payoutPolicy.release(swapRequest.recipient, amountNumber);
       if (gate.payer !== null) {
         const refund = await refundUsdc(deps.swapRuntime, gate.payer, totalUnits);
         logError("fx-swap", "prepayment did not credit in time; refund attempted", { refunded: refund.ok });
@@ -380,9 +418,10 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     // USDC; the output token and amount are the caller's. sourceRef: audit 2026-06-14.
     const swapResult = await executeSwap(deps.swapRuntime, "USDC", swapRequest.to, swapRequest.amount, swapRequest.recipient);
     if (!swapResult.ok) {
-      // The swap could not execute (insufficient liquidity, a closed market). Refund
-      // the prepayment to the payer; the raw error is logged server-side only.
-      // sourceRef: audit 2026-06-14.
+      // The swap could not execute (insufficient liquidity, a closed market). Release
+      // the reservation and refund the prepayment to the payer; the raw error is
+      // logged server-side only. sourceRef: audit 2026-06-14.
+      deps.payoutPolicy.release(swapRequest.recipient, amountNumber);
       if (gate.payer !== null) {
         const refund = await refundUsdc(deps.swapRuntime, gate.payer, totalUnits);
         if (refund.ok) {
@@ -401,7 +440,7 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
       reply.header(headerKey, headerValue);
     }
     const nowMs = deps.now();
-    deps.payoutPolicy.record(swapRequest.recipient, amountNumber, nowMs);
+    deps.payoutPolicy.commit(swapRequest.recipient, amountNumber, nowMs);
     deps.spendTracker.recordRevenue(SERVICE_PRICE_USD["fx-swap"]);
     deps.metrics.recordServicePaid("fx-swap", swapRequest.recipient, nowMs);
     deps.events.emit({
@@ -471,6 +510,6 @@ export function buildServer(deps: ServerDependencies): FastifyInstance {
     });
   });
 
-  logInfo("buildServer", "routes registered", { routeCount: 13 });
+  logInfo("buildServer", "routes registered", { routeCount: 14 });
   return app;
 }
