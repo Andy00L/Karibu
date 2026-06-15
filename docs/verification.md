@@ -27,12 +27,12 @@ reports the agent ID as Connected, and the failure happens in Self's proof step.
 
 Seven attempts, identical "technical issue" failure across two days.
 
-## Evidence (screenshots)
+## Evidence
 
-- docs/verification/self-proof-failed.png: the "Proof Failed" screen with the
-  verbatim error.
-- docs/verification/self-attempts-history.png: the Self app history showing the
-  repeated FAIL entries.
+The Self app returned the verbatim "Proof Failed" message quoted above on every
+attempt, with the repeated FAIL entries visible in the Self app activity history.
+Screenshots of both screens (the failure dialog and the FAIL history) are available
+on request; this written log is the canonical record.
 
 ## Independent verification that did succeed
 
