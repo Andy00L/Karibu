@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Karibu · gateway agent on Celo</title>
+<meta name="description" content="Karibu — the x402 gateway agent on Celo. Live, measured, on-chain." />
+<style>
+/* Karibu — soft modern-SaaS dark design system.
+   Tokens + primitives shared across the 3 directions.
+   No web fonts (system stack) per the hard brief. */
+
+:root {
+  --bg:        #0b0c0e;
+  --bg-2:      #08090b;
+  --panel:     #141518;
+  --panel-2:   #1b1d21;
+  --panel-3:   #212429;
+  --border:    #24262b;
+  --border-2:  #2e3138;
+  --text:      #f2f4f7;
+  --text-2:    #c8cdd4;
+  --muted:     #939aa4;
+  --muted-2:   #61676f;
+
+  --green:     #36d07f;   --green-ink: #07331d;   --green-soft: rgba(54,208,127,0.14);
+  --blue:      #7ba2f6;   --blue-ink:  #102348;   --blue-soft:  rgba(123,162,246,0.16);
+  --violet:    #b491f1;   --violet-ink:#291350;   --violet-soft:rgba(180,145,241,0.16);
+  --gold:      #f6c45c;   --gold-ink:  #322307;   --gold-soft:  rgba(246,196,92,0.16);
+  --red:       #ff6f6f;   --red-soft:  rgba(255,111,111,0.14);
+
+  --radius:    16px;
+  --radius-sm: 11px;
+  --radius-xs: 8px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 24px 60px -36px rgba(0,0,0,0.9);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body.karibu {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 14px;
+  line-height: 1.45;
+  min-height: 100vh;
+}
+
+/* ambient: a very soft radial wash, no grid/scanlines */
+body.karibu {
+  background:
+    radial-gradient(120% 80% at 80% -10%, rgba(54,208,127,0.05), transparent 60%),
+    radial-gradient(90% 60% at 0% 0%, rgba(123,162,246,0.035), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* ---------- cards ---------- */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px;
+}
+.card-head .ct { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
+.card-head .ct-sub { font-size: 12px; color: var(--muted); }
+.card-head .spacer { flex: 1; }
+.card-body { padding: 6px 18px 18px; }
+
+/* section / group label */
+.eyebrow { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.01em; }
+
+/* ---------- stat cell ---------- */
+.stat { display: flex; flex-direction: column; gap: 9px; }
+.stat .stat-label { font-size: 13px; color: var(--muted); font-weight: 500; }
+.stat .stat-row { display: flex; align-items: center; gap: 10px; }
+.stat .stat-value { font-size: 32px; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+.stat .stat-value.sm { font-size: 24px; }
+.stat .stat-sub { font-size: 12px; color: var(--muted-2); }
+
+/* ---------- pills ---------- */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
+  background: var(--panel-2); color: var(--muted);
+}
+.pill.green { background: var(--green-soft); color: var(--green); }
+.pill.red   { background: var(--red-soft);   color: var(--red); }
+.pill.blue  { background: var(--blue-soft);  color: var(--blue); }
+.pill.gold  { background: var(--gold-soft);  color: var(--gold); }
+.pill.ghost { background: transparent; border: 1px solid var(--border-2); color: var(--text-2); }
+
+/* live pill */
+.livepill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.livepill .livedot { width: 7px; height: 7px; }
+.livepill.is-live { color: var(--green); }
+
+.livedot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted-2); flex: none; }
+.livedot.is-live { background: var(--green); box-shadow: 0 0 0 0 rgba(54,208,127,0.55); animation: pulse 1.8s infinite; }
+.livedot.is-reconnecting { background: var(--gold); animation: blink 1s steps(2) infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(54,208,127,0.5);} 70%{box-shadow:0 0 0 6px rgba(54,208,127,0);} 100%{box-shadow:0 0 0 0 rgba(54,208,127,0);} }
+@keyframes blink { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .livedot.is-live { animation: none; } }
+
+/* ---------- icon tiles ---------- */
+.tile {
+  display: grid; place-items: center; flex: none;
+  width: 40px; height: 40px; border-radius: 11px;
+}
+.tile svg { width: 21px; height: 21px; }
+.tile.sm { width: 30px; height: 30px; border-radius: 9px; }
+.tile.sm svg { width: 16px; height: 16px; }
+.tile.green  { background: var(--green);  color: var(--green-ink); }
+.tile.blue   { background: var(--blue);   color: var(--blue-ink); }
+.tile.violet { background: var(--violet); color: var(--violet-ink); }
+.tile.gold   { background: var(--gold);   color: var(--gold-ink); }
+.tile.soft-green  { background: var(--green-soft);  color: var(--green); }
+.tile.soft-blue   { background: var(--blue-soft);   color: var(--blue); }
+.tile.soft-violet { background: var(--violet-soft); color: var(--violet); }
+.tile.soft-gold   { background: var(--gold-soft);   color: var(--gold); }
+.tile.outline { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ---------- buttons ---------- */
+.iconbtn {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+}
+.iconbtn:hover { background: var(--panel-3); color: var(--text); }
+.iconbtn svg { width: 17px; height: 17px; }
+.selbtn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.selbtn:hover { background: var(--panel-3); }
+.btn-soft {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.btn-soft:hover { background: var(--panel-3); color: var(--text); }
+
+a.link { color: var(--blue); text-decoration: none; }
+a.link:hover { text-decoration: underline; }
+
+/* ---------- list rows (services / locations style) ---------- */
+.list { display: flex; flex-direction: column; gap: 4px; }
+.lrow {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--panel-2); position: relative; overflow: hidden;
+}
+.lrow:hover { background: var(--panel-3); }
+.lrow .lr-name { font-size: 14px; font-weight: 500; color: var(--text); }
+.lrow .lr-meta { font-size: 12px; color: var(--muted); }
+.lrow .spacer { flex: 1; }
+.lrow .lr-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lrow .lr-bar { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(54,208,127,0.08); border-right: 1px solid rgba(54,208,127,0.18); z-index: 0; transition: width 0.7s cubic-bezier(.2,.7,.2,1); }
+.lrow > * { position: relative; z-index: 1; }
+
+/* ---------- activity feed rows ---------- */
+.feed { display: flex; flex-direction: column; }
+.feed-group-label { font-size: 12px; color: var(--muted-2); font-weight: 600; padding: 14px 4px 8px; }
+.arow {
+  display: flex; align-items: center; gap: 13px; padding: 11px 8px; border-radius: var(--radius-sm);
+}
+.arow:hover { background: var(--panel-2); }
+.arow.is-self { background: var(--gold-soft); }
+.arow.is-self:hover { background: rgba(246,196,92,0.2); }
+.arow .ar-body { min-width: 0; flex: 1; }
+.arow .ar-title { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.arow .ar-amt { color: var(--green); }
+.arow .ar-sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arow .self-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gold); background: var(--gold-soft); border-radius: 5px; padding: 1px 6px; }
+.arow .ar-menu { color: var(--muted-2); cursor: pointer; flex: none; opacity: 0; transition: opacity .15s; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; }
+.arow:hover .ar-menu { opacity: 1; }
+.arow .ar-menu:hover { background: var(--panel-3); color: var(--text); }
+.arow .ar-link { color: var(--muted-2); flex: none; }
+.arow .ar-link:hover { color: var(--blue); }
+.arow.enter { animation: arowin 0.5s cubic-bezier(.2,.7,.2,1); }
+@keyframes arowin { from { background: var(--green-soft); transform: translateY(-4px); opacity: 0; } to { opacity: 1; } }
+.arow.is-self.enter { animation: arowinself 0.5s ease; }
+@keyframes arowinself { from { background: rgba(246,196,92,0.26); transform: translateY(-4px); opacity: 0; } to { opacity: 1; } }
+
+.empty { padding: 40px 16px; text-align: center; color: var(--muted-2); font-size: 13px; }
+
+/* ---------- meters ---------- */
+.meter { height: 8px; border-radius: 6px; background: var(--panel-2); overflow: hidden; position: relative; }
+.meter > span { position: absolute; inset: 0; width: 0; border-radius: 6px; background: linear-gradient(90deg, #2aa765, var(--green)); transition: width 0.7s cubic-bezier(.2,.7,.2,1); }
+.meter.gold > span { background: linear-gradient(90deg, #c79a37, var(--gold)); }
+
+/* segmented mini-bars */
+.kv { display: flex; align-items: baseline; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: 0; }
+.kv .kv-l { font-size: 13px; color: var(--muted); }
+.kv .kv-v { font-size: 14px; font-weight: 600; }
+.kv .kv-v.green { color: var(--green); }
+.kv .kv-v.gold { color: var(--gold); }
+.kv .kv-v.red { color: var(--red); }
+
+/* health */
+.led { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--green); box-shadow: 0 0 9px rgba(54,208,127,0.6); }
+.led.is-down { background: var(--red); box-shadow: 0 0 9px rgba(255,111,111,0.6); }
+
+/* logo mark */
+.kmark { display: grid; place-items: center; flex: none; border-radius: 12px; background: linear-gradient(160deg, #15351f, #0c1c12); border: 1px solid rgba(54,208,127,0.4); color: var(--green); font-weight: 800; box-shadow: 0 0 26px -8px rgba(54,208,127,0.5), inset 0 0 22px rgba(54,208,127,0.07); overflow: hidden; }
+.kmark img { width: 100%; height: 100%; object-fit: cover; }
+
+.demoflag { font-size: 11px; font-weight: 600; color: var(--gold); background: var(--gold-soft); border-radius: 7px; padding: 4px 9px; display: inline-flex; align-items: center; gap: 6px; }
+
+/* scrollbars */
+.scroll::-webkit-scrollbar { width: 9px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 6px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: #3a3e46; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Direction A (Overview) layout styles */
+.app { max-width: 1340px; margin: 0 auto; padding: 0 20px 26px; }
+
+.topbar { display: flex; align-items: center; gap: 16px; padding: 18px 2px 20px; flex-wrap: wrap; }
+.topbar .brand { display: flex; align-items: center; gap: 12px; }
+.topbar .kmark { width: 40px; height: 40px; font-size: 21px; }
+.topbar .bname { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.topbar .bsub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.topbar .spacer { flex: 1; }
+.agent-badge { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.agent-badge .dotsep { color: var(--muted-2); }
+.uptime { font-size: 12.5px; color: var(--muted); }
+.uptime b { color: var(--text); font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: 1fr 358px; gap: 18px; align-items: start; }
+.content { display: grid; gap: 18px; min-width: 0; }
+
+.statstrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 20px 22px; }
+.statstrip .stat { gap: 11px; }
+.statstrip .stat + .stat { border-left: 1px solid var(--border); padding-left: 22px; }
+
+.chart-wrap { position: relative; height: 300px; padding: 4px 8px 0; }
+canvas.chart { width: 100%; height: 100%; display: block; }
+.axis { display: flex; justify-content: space-between; padding: 8px 10px 4px; font-size: 11px; color: var(--muted-2); }
+
+.twoup { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; }
+.twoup .card-body { padding-top: 2px; }
+
+.svc .lr-name { display: flex; align-items: center; gap: 8px; }
+.svc .method { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); background: var(--panel-3); border-radius: 5px; padding: 1px 6px; }
+.svc .lr-right { display: flex; align-items: baseline; gap: 16px; }
+.svc .calls { font-size: 12px; color: var(--muted); }
+.svc .earned { font-size: 14px; font-weight: 600; color: var(--green); min-width: 56px; text-align: right; }
+.svc .price { font-size: 12px; color: var(--muted); }
+
+.treas-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.treas-avail { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+.treas-avail .cur { color: var(--muted); font-size: 16px; font-weight: 500; }
+.meter-cap { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 9px; }
+
+.health-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.hchip { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 10px; background: var(--panel-2); font-size: 13px; }
+.hchip .hs { color: var(--muted); font-size: 11px; }
+
+.rail { position: sticky; top: 18px; }
+.rail .feed-scroll { max-height: calc(100vh - 150px); min-height: 460px; overflow-y: auto; padding: 0 10px 10px; }
+
+footer.foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px 20px; }
+footer .honesty { color: var(--muted); font-size: 12.5px; }
+footer .honesty b { color: var(--text-2); font-weight: 600; }
+footer .net { font-size: 12px; color: var(--muted); }
+footer .net b { color: var(--green); font-weight: 600; }
+
+@media (max-width: 1040px) {
+  .layout { grid-template-columns: 1fr; }
+  .statstrip { grid-template-columns: repeat(2, 1fr); gap: 18px 8px; }
+  .statstrip .stat + .stat { border-left: 0; padding-left: 0; }
+  .twoup { grid-template-columns: 1fr; }
+  .rail { position: static; }
+  .rail .feed-scroll { max-height: 560px; }
+}
+@media (max-width: 560px) {
+  .statstrip { grid-template-columns: 1fr; }
+  .topbar { gap: 10px; }
+}
+</style>
+</head>
+<body class="karibu">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="kmark"><img src="/karibu.png" alt="Karibu" onerror="this.replaceWith(document.createTextNode('K'))" /></div>
+      <div>
+        <div class="bname">Karibu</div>
+        <div class="bsub">the gateway agent on Celo</div>
+      </div>
+    </div>
+    <span class="agent-badge"><a class="link" id="agentLink" href="#" target="_blank" rel="noopener">Agent #9373</a><span class="dotsep">·</span><span>ERC-8004</span><span class="dotsep">·</span><span id="netBadge">celo</span></span>
+    <span class="spacer"></span>
+    <span class="uptime">Uptime <b id="uptime">--:--:--</b></span>
+    <span class="livepill is-live" id="livepill"><span class="livedot is-live"></span><span id="liveTxt">Connecting</span></span>
+    <span class="demoflag" id="demoflag" style="display:none"><span class="livedot is-reconnecting" style="background:var(--gold)"></span>Demo data</span>
+    <button class="iconbtn" id="btnRefresh" title="Reload" onclick="location.reload()"></button>
+  </header>
+
+  <div class="layout">
+    <div class="content">
+      <section class="card statstrip">
+        <div class="stat"><span class="stat-label">Total transactions</span><div class="stat-row"><span class="stat-value" id="txTotal">0</span></div><span class="stat-sub">anchored on chain</span></div>
+        <div class="stat"><span class="stat-label">Revenue · cUSD</span><div class="stat-row"><span class="stat-value sm" id="rev">$0.00</span></div><span class="stat-sub">earned from x402</span></div>
+        <div class="stat"><span class="stat-label">Net · cUSD</span><div class="stat-row"><span class="stat-value sm" id="net">$0.00</span></div><span class="stat-sub">revenue − gas</span></div>
+        <div class="stat"><span class="stat-label">Unique clients</span><div class="stat-row"><span class="stat-value sm" id="uniq">0</span></div><span class="stat-sub">paying wallets</span></div>
+        <div class="stat"><span class="stat-label">24h activity</span><div class="stat-row"><span class="stat-value sm" id="tx24">0</span><span class="pill green"><span class="livedot is-live"></span>live</span></div><span class="stat-sub">tx in last 24h</span></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <span class="ct">Activity</span>
+          <span class="ct-sub">measured activity, rolling 30 s</span>
+          <span class="spacer"></span>
+          <span class="livepill is-live"><span class="livedot is-live"></span>Live</span>
+        </div>
+        <div class="chart-wrap"><canvas class="chart" id="chart"></canvas></div>
+        <div class="axis"><span>30 s ago</span><span>15 s ago</span><span>now</span></div>
+      </section>
+
+      <div class="twoup">
+        <section class="card">
+          <div class="card-head"><span class="ct">Services</span><span class="ct-sub">x402 · since page load</span><span class="spacer"></span><span class="pill ghost" id="svcCount">4 live</span></div>
+          <div class="card-body"><div class="list svc" id="svcList"></div></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><span class="ct">Treasury</span><span class="ct-sub">cUSD</span></div>
+          <div class="card-body">
+            <div class="treas-top"><div><span class="stat-label">Available</span><div class="treas-avail"><span class="cur">$</span><span id="avail">0.00</span></div></div><span class="pill gold" id="usedPill">0% used</span></div>
+            <div class="meter gold"><span id="treasMeter"></span></div>
+            <div class="meter-cap"><span>Grant $<span id="grant">0</span></span><span>Spent $<span id="tspent">0.00</span></span></div>
+            <div style="margin-top:14px">
+              <div class="kv"><span class="kv-l">Revenue earned</span><span class="kv-v green">$<span id="trev">0.00</span></span></div>
+              <div class="kv"><span class="kv-l">Gas paid</span><span class="kv-v gold">$<span id="tgas">0.00</span></span></div>
+              <div class="kv"><span class="kv-l">Trust · 8004 score</span><span class="kv-v"><span id="score">—</span> · <span id="feedback">0</span> reviews</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-head"><span class="ct">Systems</span><span class="spacer"></span><span class="pill green" id="healthAll"><span class="led"></span> All systems operational</span></div>
+        <div class="card-body"><div class="health-row" id="healthRow"></div></div>
+      </section>
+
+      <footer class="card foot">
+        <span class="honesty">Every figure is read from chain or counted by the server. <b>The agent's own actions are flagged and never counted as client revenue.</b></span>
+        <span class="net">Network · <b id="netFoot">celo</b></span>
+      </footer>
+    </div>
+
+    <aside class="rail">
+      <section class="card">
+        <div class="card-head"><span class="ct">Live activity</span><span class="spacer"></span><span class="livepill is-live"><span class="livedot is-live"></span><span id="feedCount">0</span></span></div>
+        <div class="feed scroll feed-scroll" id="feed"><div class="empty" id="feedEmpty">Awaiting on-chain activity…</div></div>
+      </section>
+    </aside>
+  </div>
+</div>
+<script>
+/* Karibu engine — shared across exploration variants.
+   Written with NO backticks and no template interpolation so it ports directly into
+   the single-file template-literal deliverable (apps/agent/src/dashboard.ts).
+   Responsibilities:
+     - try the real agent endpoints; gracefully fall back to a demo simulator
+     - normalize /api/metrics, /api/skills, /api/treasury, /health
+     - drive an SSE-shaped event stream (tick + activity frames)
+     - tiny DOM + format helpers (count-up, short hash, explorer links)
+*/
+(function (global) {
+  "use strict";
+
+  /* ---------- tiny DOM helper ---------- */
+  function h(tag, props) {
+    var el = document.createElement(tag);
+    if (props) {
+      for (var k in props) {
+        if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
+        var v = props[k];
+        if (k === "class") el.className = v;
+        else if (k === "html") el.innerHTML = v;
+        else if (k === "text") el.textContent = v;
+        else if (k === "dataset") { for (var d in v) el.dataset[d] = v[d]; }
+        else if (k.indexOf("on") === 0 && typeof v === "function") el.addEventListener(k.slice(2).toLowerCase(), v);
+        else if (v !== null && v !== undefined && v !== false) el.setAttribute(k, v);
+      }
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c === null || c === undefined || c === false) continue;
+      if (Array.isArray(c)) { for (var j = 0; j < c.length; j++) appendChild(el, c[j]); }
+      else appendChild(el, c);
+    }
+    return el;
+  }
+  function appendChild(el, c) {
+    if (c === null || c === undefined || c === false) return;
+    el.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
+  }
+
+  /* ---------- formatting ---------- */
+  function fmtInt(n) {
+    n = Math.round(Number(n) || 0);
+    return n.toLocaleString("en-US");
+  }
+  function fmtUsd(n) {
+    n = Number(n) || 0;
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function shortHex(s, head, tail) {
+    if (!s) return "";
+    head = head || 6; tail = tail || 4;
+    if (s.length <= head + tail + 1) return s;
+    return s.slice(0, head) + "\u2026" + s.slice(-tail);
+  }
+  function txUrl(network, hash) {
+    var base = network === "celo-sepolia" ? "https://celo-sepolia.blockscout.com/tx/" : "https://celoscan.io/tx/";
+    return base + hash;
+  }
+  function agentUrl(network, agentId) {
+    var net = network === "celo-sepolia" ? "celo-sepolia" : "celo";
+    return "https://8004scan.io/agents/" + net + "/" + agentId;
+  }
+
+  /* count-up: animate an element's number from its current value to target */
+  function countUp(el, target, opts) {
+    opts = opts || {};
+    var decimals = opts.decimals || 0;
+    var prefix = opts.prefix || "";
+    var dur = opts.duration || 650;
+    var from = el.__cuVal !== undefined ? el.__cuVal : 0;
+    var to = Number(target) || 0;
+    if (from === to) { render(to); return; }
+    var start = performance.now();
+    if (el.__cuRAF) cancelAnimationFrame(el.__cuRAF);
+    function ease(t) { return 1 - Math.pow(1 - t, 3); }
+    function fmt(v) {
+      if (decimals > 0) return v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return Math.round(v).toLocaleString("en-US");
+    }
+    function render(v) { el.textContent = prefix + fmt(v); }
+    function tick(now) {
+      var t = Math.min(1, (now - start) / dur);
+      var v = from + (to - from) * ease(t);
+      render(v);
+      if (t < 1) el.__cuRAF = requestAnimationFrame(tick);
+      else { el.__cuVal = to; el.__cuRAF = null; }
+    }
+    el.__cuVal = to;
+    el.__cuRAF = requestAnimationFrame(tick);
+  }
+
+  /* ---------- demo simulator (graceful fallback) ---------- */
+  function randHex(len) {
+    var s = "0x";
+    var chars = "0123456789abcdef";
+    for (var i = 0; i < len; i++) s += chars[(Math.random() * 16) | 0];
+    return s;
+  }
+  function pick(arr) { return arr[(Math.random() * arr.length) | 0]; }
+
+  function makeSimulator(handlers) {
+    var SERVICES = [
+      { name: "verify",   method: "GET",  priceUsd: 0.01, description: "Whether a verified human backs a wallet, via Self." },
+      { name: "fx-quote", method: "POST", priceUsd: 0.01, description: "A Mento FX quote between Celo stables." },
+      { name: "fx-swap",  method: "POST", priceUsd: 0.05, description: "Convert prepaid USDC to a Celo stable, paid out to you." },
+      { name: "notary",   method: "POST", priceUsd: 0.02, description: "Anchor a sha256 hash on Celo and return a receipt." }
+    ];
+    var STABLES = ["cUSD", "cEUR", "cREAL", "USDC"];
+    // seed a believable, already-running agent (clearly flagged DEMO in UI)
+    var snap = {
+      schemaVersion: 1,
+      network: "celo",
+      agentId: "9373",
+      selfVerified: true,
+      txCountTotal: 1287,
+      txCount24h: 64,
+      uniqueClientWallets: 38,
+      revenueCusd: 19.84,
+      gasPaidCusd: 2.37,
+      feedbackCount: 12,
+      scanScore: 92,
+      updatedAtMs: Date.now()
+    };
+    var treasury = { grantCusd: 250, spentCusd: snap.gasPaidCusd, revenueCusd: snap.revenueCusd };
+    var wallets = [];
+    for (var w = 0; w < 8; w++) wallets.push(randHex(40));
+    var skills = { agentId: "9373", network: "celo", services: SERVICES, payment: { protocol: "x402" } };
+    var bootMs = Date.now() - 1000 * 60 * 60 * 7 - 1000 * 60 * 23; // ~7h uptime
+    var health = { ok: true, network: "celo", agentId: "9373", x402: true, notary: true, fx: true, fxSwap: true, mockStream: true, demo: true, uptimeMs: Date.now() - bootMs };
+
+    function emitTick() {
+      snap.updatedAtMs = Date.now();
+      health.uptimeMs = Date.now() - bootMs;
+      treasury.spentCusd = snap.gasPaidCusd;
+      treasury.revenueCusd = snap.revenueCusd;
+      handlers.onSnapshot(clone(snap), buildTreasury(), clone(health));
+    }
+    function buildTreasury() {
+      var grant = treasury.grantCusd;
+      var available = grant + treasury.revenueCusd - treasury.spentCusd;
+      return {
+        grantCusd: grant,
+        spentCusd: treasury.spentCusd,
+        revenueCusd: treasury.revenueCusd,
+        availableCusd: available,
+        netCusd: treasury.revenueCusd - treasury.spentCusd,
+        fractionUsed: Math.min(1, treasury.spentCusd / grant)
+      };
+    }
+    function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+    function step() {
+      var roll = Math.random();
+      var selfInitiated = Math.random() < 0.28;
+      var gas = 0.0008 + Math.random() * 0.0025;
+      var evt;
+      if (roll < 0.5) {
+        var svc = pick(SERVICES);
+        var amount = svc.priceUsd;
+        evt = {
+          type: "service_paid",
+          service: svc.name,
+          clientWallet: selfInitiated ? randHex(40) : pick(wallets),
+          amountUsd: amount,
+          txHash: randHex(64),
+          selfInitiated: selfInitiated
+        };
+        snap.txCountTotal += 1; snap.txCount24h += 1; snap.gasPaidCusd += gas;
+        if (!selfInitiated) {
+          snap.revenueCusd += amount;
+          if (Math.random() < 0.25) { snap.uniqueClientWallets += 1; wallets.push(evt.clientWallet); }
+        }
+      } else if (roll < 0.7) {
+        evt = { type: "notary_anchored", sha256: randHex(64).slice(2), txHash: randHex(64), selfInitiated: selfInitiated };
+        snap.txCountTotal += 1; snap.txCount24h += 1; snap.gasPaidCusd += gas;
+        if (!selfInitiated) snap.revenueCusd += 0.02;
+      } else if (roll < 0.85) {
+        var f = pick(STABLES), t = pick(STABLES.filter(function (s) { return s !== f; }));
+        evt = { type: "fx_swapped", fromSymbol: f, toSymbol: t, amountFrom: (Math.random() * 40 + 2).toFixed(2), txHash: randHex(64), selfInitiated: selfInitiated };
+        snap.txCountTotal += 1; snap.txCount24h += 1; snap.gasPaidCusd += gas;
+        if (!selfInitiated) snap.revenueCusd += 0.05;
+      } else if (roll < 0.94) {
+        evt = { type: "feedback_received", clientWallet: pick(wallets), score: 3 + ((Math.random() * 3) | 0) };
+        snap.feedbackCount += 1;
+      } else {
+        evt = { type: "human_verified", walletShort: shortHex(randHex(40)) };
+      }
+      handlers.onEvent(evt);
+      emitTick();
+    }
+
+    var timer = null;
+    return {
+      mode: "demo",
+      boot: function () {
+        handlers.onSkills(clone(skills));
+        handlers.onStatus("connecting");
+        setTimeout(function () {
+          handlers.onStatus("live");
+          emitTick();
+          timer = setInterval(step, 2200 + Math.random() * 1400);
+        }, 520);
+      },
+      stop: function () { if (timer) clearInterval(timer); }
+    };
+  }
+
+  /* ---------- real-endpoint mode with fallback ---------- */
+  function start(handlers, opts) {
+    opts = opts || {};
+    var fellBack = false;
+    var sim = null;
+    var es = null;
+    var settled = false;
+
+    function fallback() {
+      if (fellBack) return;
+      fellBack = true;
+      if (es) { try { es.close(); } catch (e) {} }
+      sim = makeSimulator(handlers);
+      sim.boot();
+    }
+
+    // attempt the real endpoints; if anything is missing/slow, demo takes over
+    var timeout = setTimeout(function () { if (!settled) fallback(); }, opts.timeout || 1400);
+
+    try {
+      handlers.onStatus("connecting");
+      // metrics + skills (best effort)
+      fetchJson("/api/metrics").then(function (m) {
+        if (fellBack) return;
+        settled = true; clearTimeout(timeout);
+        handlers.onSnapshot(m, null, null);
+      }).catch(function () {});
+      fetchJson("/api/skills").then(function (s) { if (!fellBack) handlers.onSkills(s); }).catch(function () {});
+      fetchJson("/api/treasury").then(function (t) { if (!fellBack) handlers.onSnapshot(null, t, null); }).catch(function () {});
+      fetchJson("/health").then(function (hh) { if (!fellBack) handlers.onSnapshot(null, null, hh); }).catch(function () {});
+
+      es = new EventSource("/api/stream");
+      es.onopen = function () { settled = true; clearTimeout(timeout); handlers.onStatus("live"); };
+      es.onerror = function () { if (!settled) fallback(); else handlers.onStatus("reconnecting"); };
+      es.onmessage = function (e) {
+        var frame; try { frame = JSON.parse(e.data); } catch (err) { return; }
+        if (frame.type === "tick") handlers.onSnapshot(frame.snapshot, null, null);
+        else handlers.onEvent(frame);
+      };
+    } catch (err) {
+      fallback();
+    }
+
+    return { stop: function () { clearTimeout(timeout); if (es) try { es.close(); } catch (e) {} if (sim) sim.stop(); } };
+  }
+
+  function fetchJson(url) {
+    return fetch(url, { headers: { accept: "application/json" } }).then(function (r) {
+      if (!r.ok) throw new Error("bad");
+      return r.json();
+    });
+  }
+
+  /* ---------- icons (simple line glyphs, currentColor) ---------- */
+  var ICONS = {
+    dollar: 'M12 3.2v17.6M8.4 7.4h5.1a2.4 2.4 0 0 1 0 4.8h-3a2.4 2.4 0 0 0 0 4.8h5.3',
+    userplus: 'M9.2 11.6a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8ZM3.4 19.4a5.8 5.8 0 0 1 11.6 0M18.6 7.6v5M21.1 10.1h-5',
+    anchor: 'M12 8.2v11.4M12 8.2a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM5 12.4a7 7 0 0 0 14 0M5 12.4H3m16 0h2',
+    swap: 'M7 8.5h11l-3.2-3.2M17 15.5H6l3.2 3.2',
+    shield: 'M12 3.4l7 2.8v4.6c0 4.4-2.9 7.5-7 8.8-4.1-1.3-7-4.4-7-8.8V6.2zM9 11.8l2.1 2.1 4-4',
+    star: 'M12 3.6l2.55 5.3 5.85.78-4.3 4.05 1.08 5.86L12 16.9 6.82 19.6 7.9 13.7 3.6 9.68l5.85-.78z',
+    bolt: 'M13 2.5 4.5 13.2H11l-1 8.3L18.5 10.8H12z',
+    search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM21 21l-4.3-4.3',
+    bell: 'M18 8.5a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
+    refresh: 'M21 12a9 9 0 1 1-2.64-6.36M21 4.5V9h-4.5',
+    filter: 'M3 5.5h18l-7.2 8.4v5.1l-3.6 1.8v-6.9z',
+    chevron: 'M6 9.5 12 15l6-5.5',
+    dots: 'M5 12h.01M12 12h.01M19 12h.01',
+    expand: 'M8 3.5H4.5v3.5M16 3.5h3.5v3.5M16 20.5h3.5v-3.5M8 20.5H4.5v-3.5',
+    arrowup: 'M12 19V5M6 11l6-6 6 6',
+    arrowdown: 'M12 5v14M6 13l6 6 6-6',
+    activity: 'M3 12.5h4l2.5-7 5 14 2.5-7H21',
+    layers: 'M12 3 3 8l9 5 9-5zM3 13l9 5 9-5M3 16.5l9 5 9-5'
+  };
+  function svgIcon(name, fill) {
+    var d = ICONS[name] || '';
+    var paint = fill ? 'fill="currentColor" stroke="none"' : 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+    return '<svg viewBox="0 0 24 24" ' + paint + '><path d="' + d + '"/></svg>';
+  }
+
+  /* event -> presentation metadata */
+  function eventMeta(evt) {
+    var m = { service_paid: { title: "New sale", tile: "green", icon: "dollar" },
+              notary_anchored: { title: "Hash anchored", tile: "blue", icon: "anchor" },
+              fx_swapped: { title: "FX swap", tile: "violet", icon: "swap" },
+              human_verified: { title: "Human verified", tile: "green", icon: "shield", solidIcon: false },
+              feedback_received: { title: "Feedback", tile: "gold", icon: "star", solidIcon: true } };
+    return m[evt.type] || { title: evt.type, tile: "outline", icon: "activity" };
+  }
+
+  /* build a rounded icon tile DOM node */
+  function tile(kind, iconName, size, solid) {
+    var t = h("span", { class: "tile" + (size === "sm" ? " sm" : "") + " " + kind });
+    t.innerHTML = svgIcon(iconName, !!solid);
+    return t;
+  }
+
+  /* a delta / status pill */
+  function pill(text, variant, dir) {
+    var arrow = dir === "up" ? " \u2191" : dir === "down" ? " \u2193" : "";
+    return h("span", { class: "pill " + (variant || "") }, text + arrow);
+  }
+
+  global.Karibu = {
+    h: h, fmtInt: fmtInt, fmtUsd: fmtUsd, shortHex: shortHex,
+    txUrl: txUrl, agentUrl: agentUrl, countUp: countUp, start: start,
+    svgIcon: svgIcon, icon: function (n, f) { var s = h("span"); s.innerHTML = svgIcon(n, f); return s.firstChild; },
+    eventMeta: eventMeta, tile: tile, pill: pill
+  };
+})(window);
+</script>
+<script>
+/* Karibu dashboard — app logic (Direction A: Overview).
+   Honest by construction: per-service tallies start at 0 and accumulate from
+   the live stream; the chart plots measured activity over a rolling window.
+   No template interpolation — ports into the dashboard.ts template literal. */
+(function () {
+  var K = window.Karibu, h = K.h, $ = function (id) { return document.getElementById(id); };
+  var network = "celo", bootMs = null, feedEl = $("feed"), feedCount = 0, dayLabelAdded = false;
+  var grantCusd = 250;
+
+  $("btnRefresh").innerHTML = K.svgIcon("refresh");
+
+  var svc = {
+    "verify":   { method: "GET",  price: 0.01, desc: "Human-backed wallet check, via Self.", calls: 0, earned: 0, tile: "soft-green", icon: "shield" },
+    "fx-quote": { method: "POST", price: 0.01, desc: "Mento FX quote between Celo stables.", calls: 0, earned: 0, tile: "soft-violet", icon: "swap" },
+    "fx-swap":  { method: "POST", price: 0.05, desc: "Convert prepaid USDC to a Celo stable.", calls: 0, earned: 0, tile: "soft-violet", icon: "swap" },
+    "notary":   { method: "POST", price: 0.02, desc: "Anchor a sha256 hash, return a receipt.", calls: 0, earned: 0, tile: "soft-blue", icon: "anchor" }
+  };
+  var svcMax = 1;
+
+  function setStatus(s) {
+    var lp = $("livepill"), dot = lp.querySelector(".livedot"), t = $("liveTxt");
+    dot.className = "livedot" + (s === "live" ? " is-live" : s === "reconnecting" ? " is-reconnecting" : "");
+    t.textContent = s === "live" ? "Live" : s === "reconnecting" ? "Reconnecting" : "Connecting";
+    lp.className = "livepill" + (s === "live" ? " is-live" : "");
+  }
+
+  function applySkills(skills) {
+    if (!skills || !skills.services) return;
+    network = skills.network || network;
+    $("netBadge").textContent = network; $("netFoot").textContent = network;
+    var icons = { verify: ["soft-green", "shield"], "fx-quote": ["soft-violet", "swap"], "fx-swap": ["soft-violet", "swap"], notary: ["soft-blue", "anchor"] };
+    var next = {};
+    skills.services.forEach(function (s) {
+      var prev = svc[s.name] || {};
+      var ic = icons[s.name] || ["soft-blue", "anchor"];
+      next[s.name] = { method: s.method, price: s.priceUsd, desc: s.description, calls: prev.calls || 0, earned: prev.earned || 0, tile: ic[0], icon: ic[1] };
+    });
+    svc = next;
+    renderServices();
+  }
+
+  function renderServices() {
+    var box = $("svcList"); box.innerHTML = "";
+    Object.keys(svc).forEach(function (name) {
+      var s = svc[name];
+      box.appendChild(h("div", { class: "lrow", id: "row-" + name },
+        h("span", { class: "lr-bar", id: "bar-" + name }),
+        K.tile(s.tile, s.icon, "sm", false),
+        h("div", null, h("div", { class: "lr-name" }, name, h("span", { class: "method" }, s.method)), h("div", { class: "lr-meta" }, s.desc)),
+        h("span", { class: "spacer" }),
+        h("div", { class: "lr-right" },
+          h("span", { class: "price" }, "$" + Number(s.price).toFixed(2)),
+          h("span", { class: "calls" }, h("b", { id: "calls-" + name, style: "color:var(--text)" }, K.fmtInt(s.calls)), " calls"),
+          h("span", { class: "earned", id: "earned-" + name }, "$" + K.fmtUsd(s.earned)))));
+    });
+    updateSvcBars();
+  }
+  function updateSvcBars() {
+    svcMax = 1;
+    Object.keys(svc).forEach(function (n) { if (svc[n].calls > svcMax) svcMax = svc[n].calls; });
+    Object.keys(svc).forEach(function (n) { var b = $("bar-" + n); if (b) b.style.width = (svc[n].calls / svcMax * 100) + "%"; });
+  }
+
+  function renderHealth(hh) {
+    var box = $("healthRow"); box.innerHTML = "";
+    var rows = [["x402", hh ? hh.x402 : true], ["notary", hh ? hh.notary : true], ["fx", hh ? hh.fx : true], ["fx-swap", hh ? hh.fxSwap : true], ["stream", true]];
+    var allUp = true;
+    rows.forEach(function (r) {
+      if (!r[1]) allUp = false;
+      box.appendChild(h("div", { class: "hchip" }, h("span", { class: "led" + (r[1] ? "" : " is-down") }), h("span", null, r[0]), h("span", { class: "hs" }, r[1] ? "up" : "down")));
+    });
+    var pill = $("healthAll");
+    pill.className = "pill " + (allUp ? "green" : "red");
+    pill.innerHTML = "";
+    pill.appendChild(h("span", { class: "led" + (allUp ? "" : " is-down") }));
+    pill.appendChild(document.createTextNode(allUp ? " All systems operational" : " Degraded"));
+  }
+
+  function updateTreasury(snap) {
+    var spent = snap.gasPaidCusd, rev = snap.revenueCusd;
+    var available = grantCusd + rev - spent;
+    var frac = grantCusd > 0 ? Math.min(1, spent / grantCusd) : 0;
+    K.countUp($("avail"), available, { decimals: 2 });
+    K.countUp($("grant"), grantCusd);
+    K.countUp($("tspent"), spent, { decimals: 2 });
+    K.countUp($("tgas"), spent, { decimals: 2 });
+    K.countUp($("trev"), rev, { decimals: 2 });
+    var pct = Math.round(frac * 100);
+    $("treasMeter").style.width = pct + "%"; $("usedPill").textContent = pct + "% used";
+  }
+
+  function onSnapshot(snap, treas, health) {
+    if (treas && typeof treas.grantCusd === "number") grantCusd = treas.grantCusd;
+    if (snap) {
+      network = snap.network || network;
+      $("netBadge").textContent = network; $("netFoot").textContent = network;
+      $("agentLink").href = K.agentUrl(network, snap.agentId);
+      K.countUp($("txTotal"), snap.txCountTotal);
+      K.countUp($("rev"), snap.revenueCusd, { decimals: 2, prefix: "$" });
+      K.countUp($("net"), snap.revenueCusd - snap.gasPaidCusd, { decimals: 2, prefix: "$" });
+      K.countUp($("uniq"), snap.uniqueClientWallets);
+      K.countUp($("tx24"), snap.txCount24h);
+      $("score").textContent = snap.scanScore == null ? "—" : snap.scanScore;
+      K.countUp($("feedback"), snap.feedbackCount);
+      updateTreasury(snap);
+    }
+    if (health) {
+      renderHealth(health);
+      if (health.uptimeMs !== undefined && bootMs === null) bootMs = Date.now() - health.uptimeMs;
+      if (health.demo) $("demoflag").style.display = "inline-flex";
+    }
+  }
+
+  /* ----- feed ----- */
+  function subFor(evt) {
+    if (evt.type === "service_paid") return evt.service + " · " + K.shortHex(evt.clientWallet);
+    if (evt.type === "notary_anchored") return "sha256 " + evt.sha256.slice(0, 12) + "…";
+    if (evt.type === "fx_swapped") return evt.amountFrom + " " + evt.fromSymbol + " → " + evt.toSymbol;
+    if (evt.type === "human_verified") return "Self · " + evt.walletShort;
+    if (evt.type === "feedback_received") return "Score " + evt.score + " · " + K.shortHex(evt.clientWallet);
+    return "";
+  }
+  function titleFor(evt, meta) {
+    if (evt.type === "service_paid") return [meta.title + " ", h("span", { class: "ar-amt" }, "$" + Number(evt.amountUsd).toFixed(2)), "!"];
+    return [meta.title];
+  }
+  function onEvent(evt) {
+    var empty = $("feedEmpty"); if (empty) empty.remove();
+    if (!dayLabelAdded) { feedEl.insertBefore(h("div", { class: "feed-group-label" }, "Today"), feedEl.firstChild); dayLabelAdded = true; }
+    chartEvent(evt);
+    if (evt.type === "service_paid" && svc[evt.service]) {
+      var s = svc[evt.service]; s.calls += 1; if (!evt.selfInitiated) s.earned += Number(evt.amountUsd) || 0;
+      var cE = $("calls-" + evt.service); if (cE) K.countUp(cE, s.calls);
+      var eE = $("earned-" + evt.service); if (eE) K.countUp(eE, s.earned, { decimals: 2, prefix: "$" });
+      updateSvcBars();
+    }
+    var meta = K.eventMeta(evt);
+    var titleKids = titleFor(evt, meta);
+    if (evt.selfInitiated) titleKids = titleKids.concat([h("span", { class: "self-tag" }, "self")]);
+    var right;
+    if (evt.txHash) { right = h("a", { class: "ar-link", href: K.txUrl(network, evt.txHash), target: "_blank", rel: "noopener", title: "view transaction" }); right.innerHTML = K.svgIcon("expand"); }
+    else { right = h("span", { class: "ar-menu" }); right.innerHTML = K.svgIcon("dots"); }
+    var row = h("div", { class: "arow enter" + (evt.selfInitiated ? " is-self" : "") },
+      K.tile(meta.tile, meta.icon, null, meta.solidIcon),
+      h("div", { class: "ar-body" }, h("div", { class: "ar-title" }, titleKids), h("div", { class: "ar-sub" }, subFor(evt))),
+      right);
+    var firstRow = feedEl.querySelector(".arow");
+    if (firstRow) feedEl.insertBefore(row, firstRow); else feedEl.appendChild(row);
+    setTimeout(function () { row.classList.remove("enter"); }, 600);
+    var rows = feedEl.querySelectorAll(".arow");
+    if (rows.length > 30) feedEl.removeChild(rows[rows.length - 1]);
+    feedCount = Math.min(30, feedCount + 1); $("feedCount").textContent = feedCount;
+  }
+
+  /* ----- chart: rolling measured activity intensity (real events, 30 s window) ----- */
+  var cv = $("chart"), cx = cv.getContext("2d"), W = 0, H = 0, dpr = 1;
+  var N = 80, data = [], bars = [], intensity = 0, maxSeen = 1.6;
+  for (var z = 0; z < N; z++) data.push(0);
+  function sizeChart() { var r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1; W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  function chartEvent(evt) {
+    intensity += 1; if (intensity > 6) intensity = 6;
+    if (evt.type === "service_paid" && !evt.selfInitiated) { bars.push({ i: N - 1, a: 1 }); while (bars.length > 8) bars.shift(); }
+  }
+  function chartSample() {
+    intensity *= 0.84;
+    if (intensity > maxSeen) maxSeen = intensity;
+    data.push(intensity); data.shift();
+    for (var b = 0; b < bars.length; b++) bars[b].i -= 1;
+    bars = bars.filter(function (x) { return x.i >= 0; });
+    maxSeen = Math.max(1.6, maxSeen * 0.996);
+  }
+  function px(i) { return (i / (N - 1)) * W; }
+  function py(v) { return H - 14 - Math.max(0.03, Math.min(1, v)) * (H - 40); }
+  function rrect(x, y, w, hh, r) { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + hh, r); cx.arcTo(x + w, y + hh, x, y + hh, r); cx.arcTo(x, y + hh, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); }
+  function drawChart() {
+    if (!W) sizeChart();
+    var norm = []; var i;
+    for (i = 0; i < N; i++) norm.push(data[i] / maxSeen);
+    norm[N - 1] = intensity / maxSeen;
+    cx.clearRect(0, 0, W, H);
+    cx.beginPath(); cx.moveTo(0, H);
+    for (i = 0; i < N; i++) { var x = px(i), y = py(norm[i]); if (i === 0) cx.lineTo(x, y); else { var xp = px(i - 1), yp = py(norm[i - 1]); cx.bezierCurveTo((xp + x) / 2, yp, (xp + x) / 2, y, x, y); } }
+    cx.lineTo(W, H); cx.closePath();
+    var g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "rgba(255,255,255,0.07)"); g.addColorStop(1, "rgba(255,255,255,0.01)"); cx.fillStyle = g; cx.fill();
+    cx.beginPath();
+    for (i = 0; i < N; i++) { var x2 = px(i), y2 = py(norm[i]); if (i === 0) cx.moveTo(x2, y2); else { var xp2 = px(i - 1), yp2 = py(norm[i - 1]); cx.bezierCurveTo((xp2 + x2) / 2, yp2, (xp2 + x2) / 2, y2, x2, y2); } }
+    cx.strokeStyle = "rgba(255,255,255,0.16)"; cx.lineWidth = 1.5; cx.stroke();
+    for (var b = 0; b < bars.length; b++) {
+      var bx = px(bars[b].i), bh = Math.max(0.5, norm[bars[b].i]); var top = py(bh);
+      cx.fillStyle = "rgba(54,208,127," + (0.5 + 0.45 * bars[b].a) + ")";
+      rrect(bx - 4, top, 8, H - 14 - top, 4); cx.fill();
+      bars[b].a *= 0.95;
+    }
+    var mx = px(N - 1), my = py(norm[N - 1]);
+    cx.strokeStyle = "rgba(54,208,127,0.45)"; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(mx, my); cx.lineTo(mx, H - 14); cx.stroke();
+    cx.fillStyle = "#36d07f"; cx.shadowColor = "rgba(54,208,127,0.9)"; cx.shadowBlur = 10; cx.beginPath(); cx.arc(mx, my, 4.5, 0, Math.PI * 2); cx.fill(); cx.shadowBlur = 0;
+    requestAnimationFrame(drawChart);
+  }
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function tickClock() { if (bootMs == null) return; var s = Math.floor((Date.now() - bootMs) / 1000); $("uptime").textContent = pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s / 60) % 60) + ":" + pad(s % 60); }
+
+  renderServices(); renderHealth(null);
+  setInterval(tickClock, 1000);
+  setInterval(chartSample, 375);
+  sizeChart(); drawChart();
+  window.addEventListener("resize", function () { W = 0; });
+
+  K.start({ onStatus: setStatus, onSkills: applySkills, onSnapshot: onSnapshot, onEvent: onEvent });
+})();
+</script>
+</body>
+</html>

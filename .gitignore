@@ -17,3 +17,6 @@ apps/agent/self-deeplink.txt
 .agents/
 .claude/skills/
 skills-lock.json
+
+# UI design bundle, already extracted and wired into apps/agent/src/dashboard.html
+celo.zip
