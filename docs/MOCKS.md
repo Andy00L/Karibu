@@ -78,8 +78,11 @@ attestation source is connected. sourceRef: apps/agent/src/self.ts.
   then agent_type, version, tags, and updatedAt for 8004scan completeness
   (tx 0x75e00e402b910c358e47f961ad95c6e7f2f553f23b4c05823e50f9783f8a2209, status 1),
   then the OASF skills/domains taxonomy and A2A skills, accurate to Karibu
-  (tx 0xc52fbf9b54e9668039fb41a155d837e421dcdde864a6e38463b86c45353e6ab6, status 1). The
-  agent wallet is ownerOf(9373); the registry blocks any non-owner here.
+  (tx 0xc52fbf9b54e9668039fb41a155d837e421dcdde864a6e38463b86c45353e6ab6, status 1),
+  and finally the MCP service once its endpoint was live and functional (tx
+  0x04958db770f2607aa27f3989c0e77c1441558ddbd8e9d778f75f958a8b7fd8bb, status 1), so the
+  metadata declares 8 services including a working MCP server (A2A + OASF + Web + MCP).
+  The agent wallet is ownerOf(9373); the registry blocks any non-owner here.
 - KaribuNotary deployed at 0xf90bd44B34cA1403dB57e9173D2ec8B36764D23d (native CELO gas).
 - Notary anchor (self-initiated mainnet proof, labeled, native CELO gas):
   tx 0x73628884efb65dc5b275fee743eccb662eeac5b4694e16821b977c7cf1d13fda (status 1).

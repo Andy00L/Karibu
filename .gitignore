@@ -12,3 +12,8 @@ lib/
 apps/agent/self-qr.html
 apps/agent/self-qr-image.txt
 apps/agent/self-deeplink.txt
+
+# Local agent-skill installs (celo-builders submission tooling, not part of Karibu)
+.agents/
+.claude/skills/
+skills-lock.json
